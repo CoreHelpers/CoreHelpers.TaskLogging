@@ -38,7 +38,7 @@ jobs:
       env: 
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1     
 
-    - name: Pack Abstraction
+    - name: Pack Abstractions
       working-directory: dotNet
       run: dotnet pack ./CoreHelpers.TaskLogging.Abstractions --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .
 
@@ -49,3 +49,33 @@ jobs:
     - name: Pack Log-Framework Integration
       working-directory: dotNet
       run: dotnet pack ./CoreHelpers.Extensions.Logging.Tasks --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .    
+
+    - name: Upload Nuget Package - CoreHelpers.TaskLogging.Abstractions
+      uses: svenstaro/upload-release-action@v2
+      with:
+        working-directory: dotNet
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: CoreHelpers.TaskLogging.Abstractions.${{ steps.get_version.outputs.release_version }}.nupkg
+        asset_name: CoreHelpers.TaskLogging.Abstractions.${{ steps.get_version.outputs.release_version }}.nupkg
+        tag: ${{ steps.get_version.outputs.release_tag }}
+        overwrite: true
+
+    - name: Upload Nuget Package - CoreHelpers.TaskLogging
+      uses: svenstaro/upload-release-action@v2
+      with:
+        working-directory: dotNet
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: CoreHelpers.TaskLogging.${{ steps.get_version.outputs.release_version }}.nupkg
+        asset_name: CoreHelpers.TaskLogging.${{ steps.get_version.outputs.release_version }}.nupkg
+        tag: ${{ steps.get_version.outputs.release_tag }}
+        overwrite: true
+       
+    - name: Upload Nuget Package - CoreHelpers.Extensions.Logging.Tasks
+      uses: svenstaro/upload-release-action@v2
+      with:
+        working-directory: dotNet
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: CoreHelpers.Extensions.Logging.Tasks.${{ steps.get_version.outputs.release_version }}.nupkg
+        asset_name: CoreHelpers.Extensions.Logging.Tasks.${{ steps.get_version.outputs.release_version }}.nupkg
+        tag: ${{ steps.get_version.outputs.release_tag }}
+        overwrite: true 
