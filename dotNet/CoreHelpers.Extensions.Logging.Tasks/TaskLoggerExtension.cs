@@ -16,6 +16,6 @@ namespace CoreHelpers.Extensions.Logging.Tasks
             => logger.BeginScope<TaskLoggerState>(new TaskLoggerState() { TaskId = taskId, IsTaskAnnounced = true });
 
         public static IDisposable? BeginNewTaskScope(this ILogger logger, string taskType, string taskSource, string taskWorker)
-            => logger.BeginScope<TaskLoggerState>(new TaskLoggerState() { TaskId = string.Empty, TaskType = taskType, TaskSource = taskSource, TaskWorker = taskSource, IsTaskAnnounced = false });
+            => logger.BeginScope<TaskLoggerState>(new TaskLoggerState() { TaskId = string.Empty, TaskType = taskType, TaskSource = taskSource, TaskWorker = taskWorker, IsTaskAnnounced = false });
     }
 }

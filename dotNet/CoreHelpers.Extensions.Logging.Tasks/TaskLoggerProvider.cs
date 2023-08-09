@@ -7,6 +7,7 @@ namespace CoreHelpers.Extensions.Logging.Tasks
     internal class TaskLoggerProvider : ILoggerProvider
 	{
         private ITaskLoggerFactory _taskLoggerFactory;
+        private ILogger? _activeLogger = null;
 
         public TaskLoggerProvider(ITaskLoggerFactory taskLoggerFactory)
 		{
@@ -15,7 +16,10 @@ namespace CoreHelpers.Extensions.Logging.Tasks
 
         public ILogger CreateLogger(string categoryName)
         {
-            return new TaskLogger(_taskLoggerFactory);
+            if (_activeLogger == null)
+                _activeLogger = new TaskLogger(_taskLoggerFactory);
+
+            return _activeLogger;
         }
 
         public void Dispose()
