@@ -76,3 +76,6 @@ jobs:
         asset_name: CoreHelpers.Extensions.Logging.Tasks.${{ steps.get_version.outputs.release_version }}.nupkg
         tag: ${{ steps.get_version.outputs.release_tag }}
         overwrite: true 
+
+    - name: Publish NuGet
+      run: dotnet nuget push ./dotNet/*.nupkg --api-key ${{ secrets.NUGET_TOKEN }} -s https://api.nuget.org/v3/index.json
