@@ -1,0 +1,81 @@
+name: Publish Nuget Package to Release
+
+on:
+  release:
+    types: ["created"]
+
+jobs:
+  build-nuget:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: 7.0.x  
+
+    - name: Get ReleaseVersion from Tag
+      uses: actions/github-script@v5.0.0
+      id: get_version
+      with: 
+        script: |
+          const release_tag = context.ref.substring(10)
+          const release_version = release_tag.replace('v','')
+          core.setOutput('release_tag', release_tag)
+          core.setOutput('release_version', release_version)
+          console.log('Release Tag ' + release_tag)
+          console.log('Release Version ' + release_version)
+          
+    - name: Restore
+      working-directory: dotNet
+      run: dotnet restore TaskLogging.sln      
+      env: 
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+        
+    - name: Build
+      working-directory: dotNet
+      run: dotnet build --no-restore -c Release TaskLogging.sln -p:Version=${{ steps.get_version.outputs.release_version }}
+      env: 
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1     
+
+    - name: Pack Abstractions
+      working-directory: dotNet
+      run: dotnet pack ./CoreHelpers.TaskLogging.Abstractions --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .
+
+    - name: Pack Implementation
+      working-directory: dotNet
+      run: dotnet pack ./CoreHelpers.TaskLogging --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .
+        
+    - name: Pack Log-Framework Integration
+      working-directory: dotNet
+      run: dotnet pack ./CoreHelpers.Extensions.Logging.Tasks --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .    
+
+    - name: Upload Nuget Package - CoreHelpers.TaskLogging.Abstractions
+      uses: svenstaro/upload-release-action@v2
+      with:        
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ./dotNet/CoreHelpers.TaskLogging.Abstractions.${{ steps.get_version.outputs.release_version }}.nupkg
+        asset_name: CoreHelpers.TaskLogging.Abstractions.${{ steps.get_version.outputs.release_version }}.nupkg
+        tag: ${{ steps.get_version.outputs.release_tag }}
+        overwrite: true
+
+    - name: Upload Nuget Package - CoreHelpers.TaskLogging
+      uses: svenstaro/upload-release-action@v2
+      with:        
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ./dotNet/CoreHelpers.TaskLogging.${{ steps.get_version.outputs.release_version }}.nupkg
+        asset_name: CoreHelpers.TaskLogging.${{ steps.get_version.outputs.release_version }}.nupkg
+        tag: ${{ steps.get_version.outputs.release_tag }}
+        overwrite: true
+       
+    - name: Upload Nuget Package - CoreHelpers.Extensions.Logging.Tasks
+      uses: svenstaro/upload-release-action@v2
+      with:        
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ./dotNet/CoreHelpers.Extensions.Logging.Tasks.${{ steps.get_version.outputs.release_version }}.nupkg
+        asset_name: CoreHelpers.Extensions.Logging.Tasks.${{ steps.get_version.outputs.release_version }}.nupkg
+        tag: ${{ steps.get_version.outputs.release_tag }}
+        overwrite: true 
+
+    - name: Publish NuGet
+      run: dotnet nuget push ./dotNet/*.nupkg --api-key ${{ secrets.NUGET_TOKEN }} -s https://api.nuget.org/v3/index.json
