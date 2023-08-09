@@ -52,30 +52,27 @@ jobs:
 
     - name: Upload Nuget Package - CoreHelpers.TaskLogging.Abstractions
       uses: svenstaro/upload-release-action@v2
-      with:
-        working-directory: dotNet
+      with:        
         repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: CoreHelpers.TaskLogging.Abstractions.${{ steps.get_version.outputs.release_version }}.nupkg
+        file: ./dotNet/CoreHelpers.TaskLogging.Abstractions.${{ steps.get_version.outputs.release_version }}.nupkg
         asset_name: CoreHelpers.TaskLogging.Abstractions.${{ steps.get_version.outputs.release_version }}.nupkg
         tag: ${{ steps.get_version.outputs.release_tag }}
         overwrite: true
 
     - name: Upload Nuget Package - CoreHelpers.TaskLogging
       uses: svenstaro/upload-release-action@v2
-      with:
-        working-directory: dotNet
+      with:        
         repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: CoreHelpers.TaskLogging.${{ steps.get_version.outputs.release_version }}.nupkg
+        file: ./dotNet/CoreHelpers.TaskLogging.${{ steps.get_version.outputs.release_version }}.nupkg
         asset_name: CoreHelpers.TaskLogging.${{ steps.get_version.outputs.release_version }}.nupkg
         tag: ${{ steps.get_version.outputs.release_tag }}
         overwrite: true
        
     - name: Upload Nuget Package - CoreHelpers.Extensions.Logging.Tasks
       uses: svenstaro/upload-release-action@v2
-      with:
-        working-directory: dotNet
+      with:        
         repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: CoreHelpers.Extensions.Logging.Tasks.${{ steps.get_version.outputs.release_version }}.nupkg
+        file: ./dotNet/CoreHelpers.Extensions.Logging.Tasks.${{ steps.get_version.outputs.release_version }}.nupkg
         asset_name: CoreHelpers.Extensions.Logging.Tasks.${{ steps.get_version.outputs.release_version }}.nupkg
         tag: ${{ steps.get_version.outputs.release_tag }}
         overwrite: true 
