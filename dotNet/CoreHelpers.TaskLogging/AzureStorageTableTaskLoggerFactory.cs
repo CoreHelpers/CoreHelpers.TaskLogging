@@ -24,9 +24,9 @@ namespace CoreHelpers.TaskLogging
         }
 
         public async Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker)
-            => await AnnounceTask(taskType, taskSource, taskWorker, new Dictionary<string, string>());
+            => await AnnounceTask(taskType, taskSource, taskWorker, string.Empty);
 
-        public async Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string>? metaData)
+        public async Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData)
         {
             // define the refDate
             var refDate = DateTime.UtcNow;
@@ -44,7 +44,7 @@ namespace CoreHelpers.TaskLogging
                 TaskType = taskType,
                 TaskSource = taskSource,
                 TaskWorker = taskWorker,
-                TaskData = metaData != null ? JsonConvert.SerializeObject(metaData) : String.Empty
+                TaskData = String.IsNullOrEmpty(metaData) ? string.Empty : metaData
             };
 
             // get the table name
@@ -57,6 +57,9 @@ namespace CoreHelpers.TaskLogging
             return taskKey;
         }
 
+        public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped)
+            => AnnounceTask(taskType, taskSource, taskWorker, JsonConvert.SerializeObject(metaDataTyped));
+        
         public async Task UpdateTaskStatus(string taskKey, TaskStatus taskStatus)
         {            
             // build the task entity

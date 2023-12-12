@@ -42,7 +42,19 @@ namespace CoreHelpers.TaskLogging
         /// <param name="taskWorker"></param>
         /// <param name="metaData"></param>
         /// <returns></returns>
-        Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaData);
+        Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData);
+        
+        /// <summary>
+        /// Announces a new task in the state pending to the logging framework including required
+        /// meta data usable in the frontend. Only announced tasks can be used in a task logger by
+        /// calling CreateTaskLogger
+        /// </summary>
+        /// <param name="taskType"></param>
+        /// <param name="taskSource"></param>
+        /// <param name="taskWorker"></param>
+        /// <param name="metaDataTyped"></param>
+        /// <returns></returns>
+        Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped);
 
         /// <summary>
         /// Update the task status of a given task

@@ -6,9 +6,9 @@ namespace CoreHelpers.TaskLogging.Sample
 {
 	internal class Worker
 	{
-		private ILogger<Worker> _logger;
-		private IEnumerable<IProcessor> _processors;
-        private ITaskLoggerFactory _taskLoggerFactory;
+		private readonly ILogger<Worker> _logger;
+		private readonly IEnumerable<IProcessor> _processors;
+        private readonly ITaskLoggerFactory _taskLoggerFactory;
 
         public Worker(ILogger<Worker> logger, IEnumerable<IProcessor> processors, ITaskLoggerFactory taskLoggerFactory)
 		{
@@ -19,14 +19,14 @@ namespace CoreHelpers.TaskLogging.Sample
 
 		public async Task Process()
 		{           
-            // execute the successprocessor
+            // execute the success processor
             using (_logger.BeginNewTaskScope("successjob", "q", "w"))
 			{				
 				await _processors.Where(p => p is ProcessorSuccess).First().Execute();								
 			}
 
             // execute the failedprocessor
-            using (var scope = _logger.BeginNewTaskScope("failedjob", "q", "w"))
+            using (var scope = _logger.BeginNewTaskScope("failedjob", "q", "w", "app=CoreHelpers.TaskLogging.Sample,class=Main"))
             {
 	            Console.WriteLine(scope.TaskId);
                 await _processors.Where(p => p is ProcessorFailed).First().Execute();

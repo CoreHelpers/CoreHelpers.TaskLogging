@@ -36,7 +36,19 @@ namespace CoreHelpers.Extensions.Logging.Tasks
             // check if we need to announce the task
             if (!castedState.IsTaskAnnounced)
             {
-                castedState.TaskId = _taskLoggerFactory.AnnounceTask(castedState.TaskType, castedState.TaskSource, castedState.TaskWorker).GetAwaiter().GetResult();
+                if (String.IsNullOrEmpty(castedState.MetaData))
+                {
+                    castedState.TaskId = _taskLoggerFactory
+                        .AnnounceTask(castedState.TaskType, castedState.TaskSource, castedState.TaskWorker).GetAwaiter()
+                        .GetResult();
+                }
+                else
+                {
+                    castedState.TaskId = _taskLoggerFactory
+                        .AnnounceTask(castedState.TaskType, castedState.TaskSource, castedState.TaskWorker, castedState.MetaData).GetAwaiter()
+                        .GetResult();
+                }
+
                 castedState.IsTaskAnnounced = true;
             }
 
