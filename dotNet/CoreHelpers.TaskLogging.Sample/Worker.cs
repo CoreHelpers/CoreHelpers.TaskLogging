@@ -26,8 +26,9 @@ namespace CoreHelpers.TaskLogging.Sample
 			}
 
             // execute the failedprocessor
-            using (_logger.BeginNewTaskScope("failedjob", "q", "w"))
+            using (var scope = _logger.BeginNewTaskScope("failedjob", "q", "w"))
             {
+	            Console.WriteLine(scope.TaskId);
                 await _processors.Where(p => p is ProcessorFailed).First().Execute();
             }
 
