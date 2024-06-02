@@ -11,16 +11,18 @@ namespace CoreHelpers.TaskLogging
 {
     internal class AzureStorageTableTaskLoggerFactory : ITaskLoggerFactory
     {
-        private int _cacheLimit;        
-        private string _environmentPrefix;
-        private TableServiceClient _tableServiceClient;
+        private readonly int _cacheLimit;
+        private readonly TimeSpan _cacheTimespan;
+        private readonly string _environmentPrefix;
+        private readonly TableServiceClient _tableServiceClient;
         private long _messageTimeStampCounter = 0;
 
-        public AzureStorageTableTaskLoggerFactory(string connectionString, string environmentPrefix, int cacheLimit)
+        public AzureStorageTableTaskLoggerFactory(string connectionString, string environmentPrefix, int cacheLimit, TimeSpan cacheTimespan)
         {            
             _tableServiceClient = new TableServiceClient(connectionString);
             _environmentPrefix = environmentPrefix;
-            _cacheLimit = cacheLimit;            
+            _cacheLimit = cacheLimit;
+            _cacheTimespan = cacheTimespan;
         }
 
         public async Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker)
@@ -99,7 +101,7 @@ namespace CoreHelpers.TaskLogging
 
         public ITaskLogger CreateTaskLogger(string taskKey)
         {
-            return new AzureStorageTableTaskLogger(taskKey, _cacheLimit, this);
+            return new AzureStorageTableTaskLogger(taskKey, _cacheLimit, _cacheTimespan, this);
         }
 
         public async Task Flush(DateTimeOffset flushTime, string taskKey, IEnumerable<string> messages)
@@ -207,7 +209,13 @@ namespace CoreHelpers.TaskLogging
     {
         public static IServiceCollection AddTaskLoggerForAzureStorageTable(this IServiceCollection services, string connectionString, string environmentPrefix, int lineCacheLimit) 
         {
-            services.AddSingleton<ITaskLoggerFactory>(new AzureStorageTableTaskLoggerFactory(connectionString, environmentPrefix, lineCacheLimit));
+            services.AddSingleton<ITaskLoggerFactory>(new AzureStorageTableTaskLoggerFactory(connectionString, environmentPrefix, lineCacheLimit, TimeSpan.FromMinutes(5)));
+            return services;
+        }
+        
+        public static IServiceCollection AddTaskLoggerForAzureStorageTable(this IServiceCollection services, string connectionString, string environmentPrefix, int lineCacheLimit, TimeSpan cacheTimeSpan) 
+        {
+            services.AddSingleton<ITaskLoggerFactory>(new AzureStorageTableTaskLoggerFactory(connectionString, environmentPrefix, lineCacheLimit, cacheTimeSpan));
             return services;
         }
     }

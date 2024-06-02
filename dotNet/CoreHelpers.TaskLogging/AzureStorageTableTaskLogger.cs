@@ -8,8 +8,8 @@ namespace CoreHelpers.TaskLogging
     {
         private AzureStorageTableTaskLoggerFactory _loggerFactory;        
 
-        public AzureStorageTableTaskLogger(string taskId, int cacheLimit, AzureStorageTableTaskLoggerFactory loggerFactory)
-            : base(taskId, cacheLimit)
+        public AzureStorageTableTaskLogger(string taskId, int cacheLimit, TimeSpan cacheTimespan, AzureStorageTableTaskLoggerFactory loggerFactory)
+            : base(taskId, cacheLimit, cacheTimespan)
 		{
             _loggerFactory = loggerFactory;            
         }

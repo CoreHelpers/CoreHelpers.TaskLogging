@@ -10,7 +10,7 @@ using CoreHelpers.TaskLogging.Sample;
 HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
 // add the azure storage table logger
-builder.Services.AddTaskLoggerForAzureStorageTable("UseDevelopmentStorage=true", "Dev", 100);
+builder.Services.AddTaskLoggerForAzureStorageTable("UseDevelopmentStorage=true", "Dev", 100, TimeSpan.FromSeconds(30));
 
 // register the task logger framework
 builder.Services.AddLogging(

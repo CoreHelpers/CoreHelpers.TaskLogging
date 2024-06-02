@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
@@ -8,13 +9,19 @@ namespace CoreHelpers.TaskLogging
 	internal abstract class BaseTaskLogger : ITaskLogger
     {
         private int _cacheLimit;
+        private readonly TimeSpan _cacheTimeSpan;
         private string _taskId;
         private List<string> _messages = new List<string>();
-
-        public BaseTaskLogger(string taskId, int cacheLimit)
+        private readonly Timer _flushTimer;
+        
+        public BaseTaskLogger(string taskId, int cacheLimit, TimeSpan cacheTimeSpan)
         {
             _taskId = taskId;
             _cacheLimit = cacheLimit;
+            _cacheTimeSpan = cacheTimeSpan;
+            _flushTimer = new Timer((state) => {
+                FlushInternal();
+            }, null, _cacheTimeSpan, _cacheTimeSpan);
         }
 
         public void Log(TaskLogLevel logLevel, string message, Exception? exception)
@@ -38,6 +45,7 @@ namespace CoreHelpers.TaskLogging
                     _messages.Add(formatter(message, exception));
                 }
 
+                
                 // flush if needed
                 if (_messages.Count >= _cacheLimit)
                     FlushInternal();
@@ -47,8 +55,9 @@ namespace CoreHelpers.TaskLogging
         public void Dispose()
         {
             FlushInternal();
+            _flushTimer.Dispose();
         }
-
+        
         private void FlushInternal()
         {
             lock(_messages)
