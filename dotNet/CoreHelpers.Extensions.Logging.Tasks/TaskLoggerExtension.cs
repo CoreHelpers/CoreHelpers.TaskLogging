@@ -16,9 +16,9 @@ namespace CoreHelpers.Extensions.Logging.Tasks
 
         public static ITaskLoggerTypedScope? BeginTaskScope(this ILogger logger, string taskId)
             => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = taskId, IsTaskAnnounced = true });
-
-        public static ITaskLoggerTypedScope? BeginTaskScope(this ILogger logger, string taskId, string metaDataString)
-            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = taskId, IsTaskAnnounced = true, MetaData = metaDataString });
+        
+        public static ITaskLoggerTypedScope? BeginTaskScope(this ILogger logger, string taskId, string taskWorker)
+            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = taskId, IsTaskAnnounced = true, TaskWorker = taskWorker });
         
         public static ITaskLoggerTypedScope? BeginNewTaskScope(this ILogger logger, string taskType, string taskSource, string taskWorker)
             => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = string.Empty, TaskType = taskType, TaskSource = taskSource, TaskWorker = taskWorker, IsTaskAnnounced = false });

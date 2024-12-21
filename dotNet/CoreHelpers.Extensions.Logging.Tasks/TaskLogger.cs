@@ -56,7 +56,7 @@ namespace CoreHelpers.Extensions.Logging.Tasks
             _currentTaskLogger = _taskLoggerFactory.CreateTaskLogger(castedState.TaskId);
 
             // ensure the task is running now
-            _taskLoggerFactory.UpdateTaskStatus(castedState.TaskId, TaskStatus.Running).GetAwaiter().GetResult();
+            _taskLoggerFactory.UpdateTaskStatus(castedState.TaskId, TaskStatus.Running, castedState.TaskWorker).GetAwaiter().GetResult();
 
             // done
             return new TaskLoggerScope(castedState, this);

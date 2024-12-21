@@ -64,6 +64,11 @@ namespace CoreHelpers.TaskLogging
         
         public async Task UpdateTaskStatus(string taskKey, TaskStatus taskStatus)
         {            
+            await UpdateTaskStatus(taskKey, taskStatus, string.Empty);
+        }
+
+        public async Task UpdateTaskStatus(string taskKey, TaskStatus taskStatus, string taskWorker)
+        {
             // build the task entity
             var taskEntity = new AzureTableTaskEntity()
             {
@@ -71,6 +76,10 @@ namespace CoreHelpers.TaskLogging
                 RowKey = taskKey,                
                 TaskState = taskStatus.ToString()                
             };
+            
+            // check the worker
+            if (!string.IsNullOrEmpty(taskWorker))
+                taskEntity.TaskWorker = taskWorker;
 
             // adjust the timings
             if (taskStatus == TaskStatus.Running)

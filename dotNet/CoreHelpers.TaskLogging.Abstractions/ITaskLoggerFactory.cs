@@ -65,6 +65,15 @@ namespace CoreHelpers.TaskLogging
         Task UpdateTaskStatus(string taskId, TaskStatus taskStatus);
         
         /// <summary>
+        /// Update the task status of a given task including the worker
+        /// </summary>
+        /// <param name="taskId"></param>
+        /// <param name="taskStatus"></param>
+        /// <param name="taskWorker"></param>
+        /// <returns></returns>
+        Task UpdateTaskStatus(string taskId, TaskStatus taskStatus, string taskWorker);
+        
+        /// <summary>
         /// Allows to update the worker of a task, especially useful for task reassignment
         /// </summary>
         /// <param name="taskId"></param>
