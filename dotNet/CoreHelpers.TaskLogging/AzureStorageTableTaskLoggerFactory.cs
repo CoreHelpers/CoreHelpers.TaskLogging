@@ -99,6 +99,23 @@ namespace CoreHelpers.TaskLogging
             }
         }
 
+        public async Task UpdateTaskWorker(string taskId, string taskWorker)
+        {
+            // build the task entity
+            var taskEntity = new AzureTableTaskEntity()
+            {
+                PartitionKey = taskId,
+                RowKey = taskId, 
+                TaskWorker = taskWorker
+            };
+            
+            // get the table name
+            var tableName = GetTaskTable();
+
+            // update the entity
+            await UpdateEntityInTable<AzureTableTaskEntity>(tableName, taskEntity);
+        }
+
         public ITaskLogger CreateTaskLogger(string taskKey)
         {
             return new AzureStorageTableTaskLogger(taskKey, _cacheLimit, _cacheTimespan, this);
