@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
 using CoreHelpers.TaskLogging;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,25 +13,28 @@ namespace CoreHelpers.Extensions.Logging.Tasks
             return builder;
         }
 
-        public static ITaskLoggerTypedScope? BeginTaskScope(this ILogger logger, string taskId)
-            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = taskId, IsTaskAnnounced = true });
+        public static ITaskLoggerScope? BeginTaskScope(this ILogger logger, string taskId, TimeSpan? cacheTimeSpan = null)
+            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = taskId, IsTaskAnnounced = true, CacheTimeSpan = cacheTimeSpan ?? TimeSpan.FromSeconds(30) });
         
-        public static ITaskLoggerTypedScope? BeginTaskScope(this ILogger logger, string taskId, string taskWorker)
-            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = taskId, IsTaskAnnounced = true, TaskWorker = taskWorker });
+        public static ITaskLoggerScope? BeginTaskScope(this ILogger logger, string taskId, string taskWorker, TimeSpan? cacheTimeSpan = null)
+            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = taskId, IsTaskAnnounced = true, TaskWorker = taskWorker, CacheTimeSpan = cacheTimeSpan ?? TimeSpan.FromSeconds(30) });
         
-        public static ITaskLoggerTypedScope? BeginNewTaskScope(this ILogger logger, string taskType, string taskSource, string taskWorker)
-            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = string.Empty, TaskType = taskType, TaskSource = taskSource, TaskWorker = taskWorker, IsTaskAnnounced = false });
+        public static ITaskLoggerScope? BeginNewTaskScope(this ILogger logger, string taskType, string taskSource, string taskWorker, TimeSpan? cacheTimeSpan = null)
+            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = string.Empty, TaskType = taskType, TaskSource = taskSource, TaskWorker = taskWorker, IsTaskAnnounced = false, CacheTimeSpan = cacheTimeSpan ?? TimeSpan.FromSeconds(30) });
         
-        public static ITaskLoggerTypedScope? BeginNewTaskScope(this ILogger logger, string taskType, string taskSource, string taskWorker, string metaDataString)
-            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = string.Empty, TaskType = taskType, TaskSource = taskSource, TaskWorker = taskWorker, IsTaskAnnounced = false, MetaData = metaDataString });
+        public static ITaskLoggerScope? BeginNewTaskScope(this ILogger logger, string taskType, string taskSource, string taskWorker, string metaDataString, TimeSpan? cacheTimeSpan = null)
+            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = string.Empty, TaskType = taskType, TaskSource = taskSource, TaskWorker = taskWorker, IsTaskAnnounced = false, MetaData = metaDataString, CacheTimeSpan = cacheTimeSpan ?? TimeSpan.FromSeconds(30) });
 
-        private static ITaskLoggerTypedScope? BeginTypedTaskScope(ILogger logger, TaskLoggerState taskLoggerState)
+        public static ITaskLoggerScope? BeginNewTaskScopeWithExternalId(this ILogger logger, string taskId, string taskType, string taskSource, string taskWorker, string metaDataString, TimeSpan? cacheTimeSpan = null)
+            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = taskId, TaskType = taskType, TaskSource = taskSource, TaskWorker = taskWorker, IsTaskAnnounced = false, MetaData = metaDataString, CacheTimeSpan = cacheTimeSpan ?? TimeSpan.FromSeconds(30) });
+
+        private static ITaskLoggerScope? BeginTypedTaskScope(ILogger logger, TaskLoggerState taskLoggerState)
         {
             var innerDisposable = logger.BeginScope<TaskLoggerState>(taskLoggerState);
             if (innerDisposable == null)
                 return null;
             
-            return new TaskLoggerTypedScope(taskLoggerState, innerDisposable);
+            return new TaskLoggerScope(logger, taskLoggerState, innerDisposable);
         } 
     }
 }

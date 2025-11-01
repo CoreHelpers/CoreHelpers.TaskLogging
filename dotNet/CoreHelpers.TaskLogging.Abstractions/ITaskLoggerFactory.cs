@@ -13,14 +13,15 @@ namespace CoreHelpers.TaskLogging
     }
 
 	public interface ITaskLoggerFactory
-	{
-		/// <summary>
-		/// Creates a new task logger for an individual task. All subsequent loggings
-		/// with this task logger will be stored in the same context
-		/// </summary>
-		/// <param name="uniqueTaskId"></param>
-		/// <returns></returns>
-		ITaskLogger CreateTaskLogger(string uniqueTaskId);
+    {
+        /// <summary>
+        /// Is merging all pending messages into the given task id partition
+        /// </summary>
+        /// <param name="flushTime"></param>
+        /// <param name="taskKey"></param>
+        /// <param name="messages"></param>
+        /// <returns></returns>
+        Task<string[]> MergePendingMessagesIfNeeded(DateTimeOffset flushTime, bool force, string taskKey, string[] messages);
 
         /// <summary>
         /// Announces a new task in the state pending to the logging frameowrk. Only announced
@@ -43,7 +44,7 @@ namespace CoreHelpers.TaskLogging
         /// <param name="metaData"></param>
         /// <returns></returns>
         Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData);
-        
+
         /// <summary>
         /// Announces a new task in the state pending to the logging framework including required
         /// meta data usable in the frontend. Only announced tasks can be used in a task logger by

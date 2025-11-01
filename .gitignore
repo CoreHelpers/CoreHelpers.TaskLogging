@@ -2,3 +2,4 @@
 bin
 obj
 dotNet/.idea/.idea.TaskLogging/.idea
+*.user

@@ -1,108 +1,152 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using CoreHelpers.TaskLogging;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 
 namespace CoreHelpers.Extensions.Logging.Tasks
 {
     internal class TaskLogger : ILogger
     {
-        private ITaskLoggerFactory _taskLoggerFactory;
+        private readonly string _categoryName;
+        private readonly IExternalScopeProvider _scopeProvider;
+        private readonly ITaskLoggerFactory _taskLoggerFactory;
 
-        private ITaskLogger? _currentTaskLogger = null;
-        private bool _lastLogWasAnError = false;
-
-        public TaskLogger(ITaskLoggerFactory taskLoggerFactory)
+        public TaskLogger(string categoryName, IExternalScopeProvider scopeProvider, ITaskLoggerFactory taskLoggerFactory)
         {
+            _categoryName = categoryName;
+            _scopeProvider = scopeProvider;
             _taskLoggerFactory = taskLoggerFactory;
         }
+        
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        { 
+            // check if the log level is enabled
+            if (!IsEnabled(logLevel))
+                return;
+            
+            // collect ITaskLoggerTypedScope from the scope provider
+            var scopes = new List<object>();
+            _scopeProvider.ForEachScope((scope, list) => list.Add(scope), scopes);
 
-        // By default the task logging framework does not care about
-        // unknown scopes
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull
-        {
-            // check if we are interested
-            var castedState = state as TaskLoggerState;
-            if (castedState == null)
-                return null;
-
-            // just in case a task logger is active flush
-            if (_currentTaskLogger != null)
+            // filter for the task logger scope, if not in the list nothing todo
+            var taskLoggerState = scopes.FirstOrDefault(scope => scope is TaskLoggerState typed) as TaskLoggerState;
+            if (taskLoggerState == null)
+                return;
+            
+            // check if we need to announce the task as it was not announced before
+            if (eventId is { Id: 0, Name: "TaskScopeInitPending" })
             {
-                _currentTaskLogger.Dispose();
-                _lastLogWasAnError = false;
-            }
+                if (taskLoggerState.IsTaskAnnounced && !string.IsNullOrEmpty(taskLoggerState.TaskId))
+                    return;
 
-            // check if we need to announce the task
-            if (!castedState.IsTaskAnnounced)
-            {
-                if (String.IsNullOrEmpty(castedState.MetaData))
+                if (String.IsNullOrEmpty(taskLoggerState.MetaData))
                 {
-                    castedState.TaskId = _taskLoggerFactory
-                        .AnnounceTask(castedState.TaskType, castedState.TaskSource, castedState.TaskWorker).GetAwaiter()
+                    taskLoggerState.TaskId = _taskLoggerFactory
+                        .AnnounceTask(taskLoggerState.TaskType, taskLoggerState.TaskSource, taskLoggerState.TaskWorker).GetAwaiter()
                         .GetResult();
                 }
                 else
                 {
-                    castedState.TaskId = _taskLoggerFactory
-                        .AnnounceTask(castedState.TaskType, castedState.TaskSource, castedState.TaskWorker, castedState.MetaData).GetAwaiter()
+                    taskLoggerState.TaskId = _taskLoggerFactory
+                        .AnnounceTask(taskLoggerState.TaskType, taskLoggerState.TaskSource, taskLoggerState.TaskWorker, taskLoggerState.MetaData).GetAwaiter()
                         .GetResult();
                 }
 
-                castedState.IsTaskAnnounced = true;
-            }
-
-            // set a new task logger
-            _currentTaskLogger = _taskLoggerFactory.CreateTaskLogger(castedState.TaskId);
-
-            // ensure the task is running now
-            _taskLoggerFactory.UpdateTaskStatus(castedState.TaskId, TaskStatus.Running, castedState.TaskWorker).GetAwaiter().GetResult();
-
-            // done
-            return new TaskLoggerScope(castedState, this);
-        }
-
-        // All levels are eanbled
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        // allow to log 
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        {
-            if (_currentTaskLogger == null)
+                taskLoggerState.IsTaskAnnounced = true;
+                
                 return;
+            }
 
-            // adjust the log level
-            var taskLogLevel = TaskLogLevel.Information;
-            if (logLevel == LogLevel.Error || logLevel == LogLevel.Critical)
-                taskLogLevel = TaskLogLevel.Error;
+            // check if we need to set the task as running
+            if (eventId is { Id: 0, Name: "TaskScopeStarted" })
+            {
+                _taskLoggerFactory.UpdateTaskStatus(taskLoggerState.TaskId, TaskStatus.Running).Wait();
+                return;
+            }
+            
+            // in case of exception, we need to log it more in details
+            if (exception != null)
+            {
+                // set the last log as error so that the task will be marked as failed
+                taskLoggerState.LastLogWasAnError = true;
+                
+                // render the exception
+                LogException(logLevel, exception, formatter);
+                return;
+            }
+            
+            // lock the messages to avoid concurrency issues
+            lock (taskLoggerState.PendingMessages)
+            {
+                // check if we received the dispose message
+                if (eventId is { Id: 0, Name: "TaskScopeDisposed" })
+                {
+                    // at this point we need to flush if needed
+                    taskLoggerState.PendingMessages = new List<string>(_taskLoggerFactory.MergePendingMessagesIfNeeded(DateTimeOffset.Now, true, taskLoggerState.TaskId, taskLoggerState.PendingMessages.ToArray()).GetAwaiter().GetResult());
+                    
+                    // ensure the task is finished now                
+                    _taskLoggerFactory.UpdateTaskStatus(taskLoggerState.TaskId, taskLoggerState.LastLogWasAnError ? TaskStatus.Failed : TaskStatus.Succeed).GetAwaiter().GetResult();
+                }
+                // check if we need to flush the messages
+                else if (eventId is { Id: 0, Name: "TaskScopeFlushRequired" })
+                {
+                    // at this point we need to flush if needed
+                    taskLoggerState.PendingMessages = new List<string>(_taskLoggerFactory.MergePendingMessagesIfNeeded(DateTimeOffset.Now, true, taskLoggerState.TaskId, taskLoggerState.PendingMessages.ToArray()).GetAwaiter().GetResult());
+                }
+                else
+                {
+                    // get the formated message
+                    var msg = formatter(state, exception);
+                    if (msg == null)
+                        return;
+                    
+                    // at this point we need to add the message to the scope
+                    taskLoggerState.PendingMessages.Add(msg);
 
-            // log 
-            _currentTaskLogger.Log(taskLogLevel, formatter(state, exception), exception);
-
-            // remember the exception
-            if (logLevel == LogLevel.Error)
-                _lastLogWasAnError = true;
+                    // at this point we need to flush if needed
+                    taskLoggerState.PendingMessages = new List<string>(_taskLoggerFactory.MergePendingMessagesIfNeeded(DateTimeOffset.Now, false, taskLoggerState.TaskId, taskLoggerState.PendingMessages.ToArray()).GetAwaiter().GetResult());
+                }
+            }
+        }
+        
+        private void LogException<TState>(LogLevel logLevel, Exception exception, Func<TState, Exception?, string> formatter, bool innerException = false)
+        {
+            if (innerException)
+                this.Log(logLevel, $"Inner Exception: {exception.Message}", null, formatter);
             else
-                _lastLogWasAnError = false;
+            {
+                this.Log(logLevel, $"Error with exception: {exception.Message}", null, formatter);                
+                try
+                {
+                    this.Log(logLevel, "Dumping Raw-JSON-Export of the exception", null, formatter);
+                    this.Log(logLevel, JsonConvert.SerializeObject(exception), null, formatter);
+                }
+                catch (Exception)
+                {
+                    // The exception is catched without handling to prevent
+                    // crashed just because of invalid JSON message we try to log
+                }
+            }
 
+            if (exception.StackTrace != null)
+            {
+                var splittedError = exception.StackTrace.Split('\n');
+                foreach (var el in splittedError)
+                    this.Log(logLevel, el, null, formatter);
+            }
+
+            if (exception.InnerException != null)
+                LogException(logLevel, exception.InnerException, formatter, true);
         }
 
-        // ensure we write all backe
-        public void DisposeScope(TaskLoggerState state, TaskLoggerScope scope)
+        public bool IsEnabled(LogLevel logLevel)
+            => true;
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull
         {
-            if (_currentTaskLogger != null)
-            {                                   
-                // write all messages back
-                _currentTaskLogger.Dispose();
-                _currentTaskLogger = null;
-
-                // ensure the task is finished now                
-                _taskLoggerFactory.UpdateTaskStatus(state.TaskId, _lastLogWasAnError ? TaskStatus.Failed : TaskStatus.Succeed).GetAwaiter().GetResult();
-
-                // reset the exception
-                _lastLogWasAnError = false;
-            }
-        }        
+            return _scopeProvider.Push(state);
+        }
     }
 }
-

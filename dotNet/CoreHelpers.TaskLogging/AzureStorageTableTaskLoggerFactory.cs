@@ -125,15 +125,23 @@ namespace CoreHelpers.TaskLogging
             await UpdateEntityInTable<AzureTableTaskEntity>(tableName, taskEntity);
         }
 
-        public ITaskLogger CreateTaskLogger(string taskKey)
+        public async Task<string[]> MergePendingMessagesIfNeeded(DateTimeOffset flushTime, bool force, string taskKey, string[] messages)
         {
-            return new AzureStorageTableTaskLogger(taskKey, _cacheLimit, _cacheTimespan, this);
-        }
+            // check if the cache limit is exceeded
+            if (messages.Length >= _cacheLimit || force)
+            {
+                await MergePendingMessages(flushTime, taskKey, messages);
+                return Array.Empty<string>();
+            }
 
-        public async Task Flush(DateTimeOffset flushTime, string taskKey, IEnumerable<string> messages)
+            // at this point we didn't flush anything
+            return messages;
+        }
+        
+        public async Task MergePendingMessages(DateTimeOffset flushTime, string taskKey, string[] messages)
         {
             // check if we have something to flush
-            if (messages.Count() == 0)
+            if (!messages.Any())
                 return;
 
             // get the table name

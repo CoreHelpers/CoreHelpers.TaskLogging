@@ -10,23 +10,24 @@ using CoreHelpers.TaskLogging.Sample;
 HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
 // add the azure storage table logger
-builder.Services.AddTaskLoggerForAzureStorageTable("UseDevelopmentStorage=true", "Dev", 100, TimeSpan.FromSeconds(30));
+builder.Services.AddTaskLoggerForAzureStorageTable("UseDevelopmentStorage=true", "Dev", 100);
 
 // register the task logger framework
-builder.Services.AddLogging(
-    (configure) => configure
-        .AddConsole()
-        .AddTaskLogger());
+builder.Services.AddLogging((configure) => configure
+    .AddConsole()
+    .AddTaskLogger());
+
 
 builder.Services.AddTransient<IProcessor, ProcessorSuccess>();
 builder.Services.AddTransient<IProcessor, ProcessorFailed>();
 builder.Services.AddTransient<Worker>();
+builder.Services.AddTransient<WorkerParallelTasks>();
 
 // build the host
 using IHost host = builder.Build();
 
 // get the worker
-var worker = host.Services.GetService<Worker>();
+var worker = host.Services.GetService<WorkerParallelTasks>();
 if (worker == null)
     throw new NullReferenceException();
 
