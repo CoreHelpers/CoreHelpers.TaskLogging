@@ -50,6 +50,10 @@ jobs:
       working-directory: dotNet
       run: dotnet pack ./CoreHelpers.Extensions.Logging.Tasks --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .    
 
+    - name: Pack Azure-Functions-Framework Integration
+      working-directory: dotNet
+      run: dotnet pack ./CoreHelpers.Extensions.Logging.DurableTask --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .
+
     - name: Upload Nuget Package - CoreHelpers.TaskLogging.Abstractions
       uses: svenstaro/upload-release-action@v2
       with:        
@@ -76,6 +80,15 @@ jobs:
         asset_name: CoreHelpers.Extensions.Logging.Tasks.${{ steps.get_version.outputs.release_version }}.nupkg
         tag: ${{ steps.get_version.outputs.release_tag }}
         overwrite: true 
+
+    - name: Upload Nuget Package - CoreHelpers.Extensions.Logging.DurableTask
+      uses: svenstaro/upload-release-action@v2
+      with:        
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ./dotNet/CoreHelpers.Extensions.Logging.DurableTask.${{ steps.get_version.outputs.release_version }}.nupkg
+        asset_name: CoreHelpers.Extensions.Logging.DurableTask.${{ steps.get_version.outputs.release_version }}.nupkg
+        tag: ${{ steps.get_version.outputs.release_tag }}
+        overwrite: true     
 
     - name: Publish NuGet
       run: dotnet nuget push ./dotNet/*.nupkg --api-key ${{ secrets.NUGET_TOKEN }} -s https://api.nuget.org/v3/index.json
