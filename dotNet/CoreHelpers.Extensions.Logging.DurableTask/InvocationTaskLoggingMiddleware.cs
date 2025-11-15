@@ -21,30 +21,27 @@ namespace CoreHelpers.Extensions.Logging.DurableTask
 
     internal class InvocationTaskLoggingMiddleware : IFunctionsWorkerMiddleware
     {
-        public async Task Invoke(FunctionContext context, FunctionExecutionDelegate next)
+        public Task Invoke(FunctionContext context, FunctionExecutionDelegate next)
         {
             // figure out if it is an orchestration function
             bool isOrchestration = context.FunctionDefinition.InputBindings.Values
                 .Any(b => b.Type.EndsWith("orchestrationTrigger", StringComparison.OrdinalIgnoreCase));
 
             if (isOrchestration)
-            {
-                await next(context);
-            }
-            else
-            {
-                var logger = context.GetLogger(context.FunctionDefinition.Name);
+                return next(context);
+            
+            var logger = context.GetLogger(context.FunctionDefinition.Name);
 
-                using (logger.BeginNewTaskScope(context.FunctionDefinition.Name, "ActivityInvocation", "AzureFunctionsFlexConsumption"))
+            using (logger.BeginNewTaskScope(context.FunctionDefinition.Name, "ActivityInvocation", "AzureFunctionsFlexConsumption"))
+            {
+                try
                 {
-                    try
-                    {
-                        await next(context);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "An unhandled exception occurred during function invocation.");
-                    }
+                    return next(context);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "An unhandled exception occurred during function invocation.");
+                    throw;
                 }
             }
         }
