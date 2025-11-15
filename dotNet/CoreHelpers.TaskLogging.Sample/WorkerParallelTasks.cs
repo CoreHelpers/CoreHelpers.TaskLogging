@@ -41,10 +41,7 @@ namespace CoreHelpers.TaskLogging.Sample
 				_logger.LogInformation($"Executing task {iTaskNumber}");
 
 				// create a task logger scope
-				using var _ =
-					iTaskNumber == 0 ?
-						_logger.BeginNewTaskScopeWithExternalId(Guid.NewGuid().ToString(), "SpawnedTask", "WorkerParallelTasks", $"TaskWorker-{iTaskNumber}", string.Empty, TimeSpan.FromSeconds(1)) :
-						_logger.BeginNewTaskScope("SpawnedTask", "WorkerParallelTasks", $"TaskWorker-{iTaskNumber}", TimeSpan.FromSeconds(1));
+				using var _ = _logger.BeginNewTaskScope("SpawnedTask", "WorkerParallelTasks", $"TaskWorker-{iTaskNumber}", TimeSpan.FromSeconds(1));
 					
 				// log something in the context of the task
 				_logger.LogInformation($"T{iTaskNumber}: Started task {iTaskNumber}");

@@ -81,6 +81,22 @@ namespace CoreHelpers.TaskLogging
         /// <param name="taskWorker"></param>
         /// <returns></returns>
         Task UpdateTaskWorker(string taskId, string taskWorker);
+        
+        /// <summary>
+        /// Resolve an external id into the task id or returns null if not found
+        /// </summary>
+        /// <param name="externalTaskId"></param>
+        /// <returns></returns>
+        Task<string?> LookupTaskIdByExternalId(string externalTaskId);
+        
+        
+        /// <summary>
+        /// Registeres an external id for a given task id
+        /// </summary>
+        /// <param name="taskId"></param>
+        /// <param name="externalTaskId"></param>
+        /// <returns></returns>
+        Task RegisterExternlIdForTask(string taskId, string externalTaskId);
     }
 }
 

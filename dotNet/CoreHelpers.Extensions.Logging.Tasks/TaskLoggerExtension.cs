@@ -24,10 +24,7 @@ namespace CoreHelpers.Extensions.Logging.Tasks
         
         public static ITaskLoggerScope? BeginNewTaskScope(this ILogger logger, string taskType, string taskSource, string taskWorker, string metaDataString, TimeSpan? cacheTimeSpan = null)
             => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = string.Empty, TaskType = taskType, TaskSource = taskSource, TaskWorker = taskWorker, IsTaskAnnounced = false, MetaData = metaDataString, CacheTimeSpan = cacheTimeSpan ?? TimeSpan.FromSeconds(30) });
-
-        public static ITaskLoggerScope? BeginNewTaskScopeWithExternalId(this ILogger logger, string taskId, string taskType, string taskSource, string taskWorker, string metaDataString, TimeSpan? cacheTimeSpan = null)
-            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = taskId, TaskType = taskType, TaskSource = taskSource, TaskWorker = taskWorker, IsTaskAnnounced = false, MetaData = metaDataString, CacheTimeSpan = cacheTimeSpan ?? TimeSpan.FromSeconds(30) });
-
+        
         private static ITaskLoggerScope? BeginTypedTaskScope(ILogger logger, TaskLoggerState taskLoggerState)
         {
             var innerDisposable = logger.BeginScope<TaskLoggerState>(taskLoggerState);

@@ -27,7 +27,8 @@ builder.Services.AddTransient<WorkerParallelTasks>();
 using IHost host = builder.Build();
 
 // get the worker
-var worker = host.Services.GetService<WorkerParallelTasks>();
+//var worker = host.Services.GetService<WorkerParallelTasks>();
+var worker = host.Services.GetService<Worker>();
 if (worker == null)
     throw new NullReferenceException();
 

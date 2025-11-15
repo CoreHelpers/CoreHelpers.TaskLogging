@@ -125,6 +125,34 @@ namespace CoreHelpers.TaskLogging
             await UpdateEntityInTable<AzureTableTaskEntity>(tableName, taskEntity);
         }
 
+        public async Task<string?> LookupTaskIdByExternalId(string externalTaskId)
+        {
+            // get the table name
+            var tableName = GetExternalTaskIdLookupTable();
+
+            // lookup 
+            var externalIdEnties = await QueryEntitiyFromTableByPartitionKey<AzureTableTaskEntity>(tableName, externalTaskId);
+            if (externalIdEnties.Length == 0)
+                return null;
+
+            return externalIdEnties.First().RowKey;
+        }
+
+        public async Task RegisterExternlIdForTask(string taskId, string externalTaskId)
+        {
+            // build the task entity
+            var externalIdForTaskEntity = new AzureTableTaskEntity()
+            {
+                PartitionKey = externalTaskId,
+                RowKey = taskId,
+            };
+            
+            // get the table name
+            var tableName = GetExternalTaskIdLookupTable();
+            
+            await AddEntityToTable<AzureTableTaskEntity>(tableName, externalIdForTaskEntity);
+        }
+
         public async Task<string[]> MergePendingMessagesIfNeeded(DateTimeOffset flushTime, bool force, string taskKey, string[] messages)
         {
             // check if the cache limit is exceeded
@@ -184,6 +212,9 @@ namespace CoreHelpers.TaskLogging
 
         private string GetTaskTable()
             => GetTableName("Tasks");
+        
+        private string GetExternalTaskIdLookupTable()
+            => GetTableName("TasksExternalIdLookup");
 
         private string GetRunningTaskTable()
             => $"{_environmentPrefix}TasksRunning";
@@ -218,6 +249,21 @@ namespace CoreHelpers.TaskLogging
         private async Task DeleteEntityByKeys(string tableName, string pKey, string rowKey)
             => await ExecuteEntityToTableOperation(tableName, (TableClient tc) => tc.DeleteEntityAsync(pKey, rowKey, Azure.ETag.All));
 
+        private async Task<T[]> QueryEntitiyFromTableByPartitionKey<T>(string tableName, string partitionKey) where T : class, ITableEntity
+        {
+            var result = new List<T>();
+            
+            await ExecuteEntityToTableOperation(tableName,  async (TableClient tc) =>
+            {
+                var entities = tc.QueryAsync<T>(filter: $"PartitionKey eq '{partitionKey}'");
+                
+                await foreach (var entity in entities)
+                    result.Add(entity);
+            });
+
+            return result.ToArray();
+        }
+
         private async Task ExecuteEntityToTableOperation(string tableName, Func<TableClient, Task> operation)
         {
             // get the table client
@@ -232,7 +278,17 @@ namespace CoreHelpers.TaskLogging
             {
                 if (e.ErrorCode != null && e.ErrorCode.Equals("TableNotFound"))
                 {
-                    await tableClient.CreateAsync();
+                    try
+                    {
+                        await tableClient.CreateAsync();
+                        
+                    // double check patter because of race conditions    
+                    } catch(Azure.RequestFailedException e2)
+                    {
+                        if (e2.ErrorCode != null && !e2.ErrorCode.Equals("TableAlreadyExists"))
+                            throw;
+                    }
+                    
                     await operation(tableClient);
                 }
             }
