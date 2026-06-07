@@ -1,120 +1,119 @@
-name: Publish Nuget Package to Release
+name: Publish NuGet Packages
 
 on:
-  release:
-    types: ["created"]
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
 
 jobs:
-  build-nuget:
+  build-test-pack-release:
     runs-on: ubuntu-latest
+
     steps:
-    - uses: actions/checkout@v2
-    - name: Setup .NET Core
-      uses: actions/setup-dotnet@v1
-      with:
-        dotnet-version: 7.0.x  
+      - uses: actions/checkout@v4
 
-    - name: Get ReleaseVersion from Tag
-      uses: actions/github-script@v5.0.0
-      id: get_version
-      with: 
-        script: |
-          const release_tag = context.ref.substring(10)
-          const release_version = release_tag.replace('v','')
-          core.setOutput('release_tag', release_tag)
-          core.setOutput('release_version', release_version)
-          console.log('Release Tag ' + release_tag)
-          console.log('Release Version ' + release_version)
-          
-    - name: Restore
-      working-directory: dotNet
-      run: dotnet restore TaskLogging.sln      
-      env: 
-        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
-        
-    - name: Build
-      working-directory: dotNet
-      run: dotnet build --no-restore -c Release TaskLogging.sln -p:Version=${{ steps.get_version.outputs.release_version }}
-      env: 
-        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1     
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
 
-    - name: Pack Abstractions
-      working-directory: dotNet
-      run: dotnet pack ./CoreHelpers.TaskLogging.Abstractions --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .
+      - name: Get version from tag
+        id: get_version
+        shell: bash
+        run: |
+          release_tag="${GITHUB_REF_NAME}"
+          release_version="${release_tag#v}"
 
-    - name: Pack Implementation
-      working-directory: dotNet
-      run: dotnet pack ./CoreHelpers.TaskLogging --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .
+          if [ "$release_tag" = "$release_version" ]; then
+            echo "Release tag must start with 'v'." >&2
+            exit 1
+          fi
 
-    - name: Pack Maintenance Abstractions
-      working-directory: dotNet
-      run: dotnet pack ./CoreHelpers.TaskLogging.Maintenance.Abstractions --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "release_version=$release_version" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $release_tag"
+          echo "Release version: $release_version"
 
-    - name: Pack Maintenance Implementation
-      working-directory: dotNet
-      run: dotnet pack ./CoreHelpers.TaskLogging.Maintenance --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .
-        
-    - name: Pack Log-Framework Integration
-      working-directory: dotNet
-      run: dotnet pack ./CoreHelpers.Extensions.Logging.Tasks --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .    
+      - name: Restore
+        working-directory: dotNet
+        run: dotnet restore TaskLogging.sln
+        env:
+          DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
 
-    - name: Pack Azure-Functions-Framework Integration
-      working-directory: dotNet
-      run: dotnet pack ./CoreHelpers.Extensions.Logging.DurableTask --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .
+      - name: Build
+        working-directory: dotNet
+        run: dotnet build --no-restore -c Release TaskLogging.sln -p:Version=${{ steps.get_version.outputs.release_version }}
+        env:
+          DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
 
-    - name: Upload Nuget Package - CoreHelpers.TaskLogging.Abstractions
-      uses: svenstaro/upload-release-action@v2
-      with:        
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: ./dotNet/CoreHelpers.TaskLogging.Abstractions.${{ steps.get_version.outputs.release_version }}.nupkg
-        asset_name: CoreHelpers.TaskLogging.Abstractions.${{ steps.get_version.outputs.release_version }}.nupkg
-        tag: ${{ steps.get_version.outputs.release_tag }}
-        overwrite: true
+      - name: Test
+        working-directory: dotNet
+        run: dotnet test TaskLogging.sln --no-build -c Release
+        env:
+          DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
 
-    - name: Upload Nuget Package - CoreHelpers.TaskLogging
-      uses: svenstaro/upload-release-action@v2
-      with:        
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: ./dotNet/CoreHelpers.TaskLogging.${{ steps.get_version.outputs.release_version }}.nupkg
-        asset_name: CoreHelpers.TaskLogging.${{ steps.get_version.outputs.release_version }}.nupkg
-        tag: ${{ steps.get_version.outputs.release_tag }}
-        overwrite: true
+      - name: Pack NuGet packages
+        working-directory: dotNet
+        shell: bash
+        run: |
+          packages=(
+            CoreHelpers.TaskLogging.Abstractions
+            CoreHelpers.TaskLogging
+            CoreHelpers.TaskLogging.Maintenance.Abstractions
+            CoreHelpers.TaskLogging.Maintenance
+            CoreHelpers.Extensions.Logging.Tasks
+            CoreHelpers.Extensions.Logging.DurableTask
+          )
 
-    - name: Upload Nuget Package - CoreHelpers.TaskLogging.Maintenance.Abstractions
-      uses: svenstaro/upload-release-action@v2
-      with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: ./dotNet/CoreHelpers.TaskLogging.Maintenance.Abstractions.${{ steps.get_version.outputs.release_version }}.nupkg
-        asset_name: CoreHelpers.TaskLogging.Maintenance.Abstractions.${{ steps.get_version.outputs.release_version }}.nupkg
-        tag: ${{ steps.get_version.outputs.release_tag }}
-        overwrite: true
+          for package in "${packages[@]}"; do
+            dotnet pack "./$package" \
+              --configuration Release \
+              --no-build \
+              -p:PackageVersion=${{ steps.get_version.outputs.release_version }} \
+              --output .
+          done
 
-    - name: Upload Nuget Package - CoreHelpers.TaskLogging.Maintenance
-      uses: svenstaro/upload-release-action@v2
-      with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: ./dotNet/CoreHelpers.TaskLogging.Maintenance.${{ steps.get_version.outputs.release_version }}.nupkg
-        asset_name: CoreHelpers.TaskLogging.Maintenance.${{ steps.get_version.outputs.release_version }}.nupkg
-        tag: ${{ steps.get_version.outputs.release_tag }}
-        overwrite: true
-       
-    - name: Upload Nuget Package - CoreHelpers.Extensions.Logging.Tasks
-      uses: svenstaro/upload-release-action@v2
-      with:        
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: ./dotNet/CoreHelpers.Extensions.Logging.Tasks.${{ steps.get_version.outputs.release_version }}.nupkg
-        asset_name: CoreHelpers.Extensions.Logging.Tasks.${{ steps.get_version.outputs.release_version }}.nupkg
-        tag: ${{ steps.get_version.outputs.release_tag }}
-        overwrite: true 
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: dotNet/*.nupkg
+          if-no-files-found: error
 
-    - name: Upload Nuget Package - CoreHelpers.Extensions.Logging.DurableTask
-      uses: svenstaro/upload-release-action@v2
-      with:        
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: ./dotNet/CoreHelpers.Extensions.Logging.DurableTask.${{ steps.get_version.outputs.release_version }}.nupkg
-        asset_name: CoreHelpers.Extensions.Logging.DurableTask.${{ steps.get_version.outputs.release_version }}.nupkg
-        tag: ${{ steps.get_version.outputs.release_tag }}
-        overwrite: true     
+      - name: Create GitHub release and upload packages
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release_tag="${{ steps.get_version.outputs.release_tag }}"
 
-    - name: Publish NuGet
-      run: dotnet nuget push ./dotNet/*.nupkg --api-key ${{ secrets.NUGET_TOKEN }} -s https://api.nuget.org/v3/index.json
+          if gh release view "$release_tag" > /dev/null 2>&1; then
+            gh release upload "$release_tag" ./dotNet/*.nupkg --clobber
+          else
+            gh release create "$release_tag" ./dotNet/*.nupkg \
+              --title "$release_tag" \
+              --generate-notes \
+              --verify-tag
+          fi
+
+  publish-nuget:
+    runs-on: ubuntu-latest
+    needs: build-test-pack-release
+
+    steps:
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download NuGet packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: packages
+
+      - name: Publish NuGet packages
+        run: dotnet nuget push packages/*.nupkg --api-key "${{ secrets.NUGET_TOKEN }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
