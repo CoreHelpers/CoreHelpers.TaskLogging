@@ -10,7 +10,7 @@ jobs:
     - name: Setup .NET Core
       uses: actions/setup-dotnet@v1
       with:
-        dotnet-version: 7.0.x        
+        dotnet-version: 8.0.x
     - name: Restore
       working-directory: dotNet
       run: dotnet restore TaskLogging.sln      
@@ -21,4 +21,10 @@ jobs:
       working-directory: dotNet
       run: dotnet build --no-restore -c Release TaskLogging.sln
       env: 
-        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1      
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+
+    - name: Test
+      working-directory: dotNet
+      run: dotnet test TaskLogging.sln --no-build -c Release
+      env:
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
