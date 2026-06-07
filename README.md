@@ -109,4 +109,13 @@ dotnet build TaskLogging.sln
 dotnet test TaskLogging.sln
 ```
 
-Release builds publish the NuGet packages through the GitHub Actions release workflow.
+## Release
+
+Push a version tag to create a GitHub Release and publish all NuGet packages:
+
+```bash
+git tag v0.0.0
+git push origin v0.0.0
+```
+
+The release workflow builds, tests, packs all NuGet packages, creates the GitHub Release, uploads the `.nupkg` files as release assets, and then publishes the same package artifacts to NuGet.
