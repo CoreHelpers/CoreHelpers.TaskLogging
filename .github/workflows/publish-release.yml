@@ -45,6 +45,14 @@ jobs:
     - name: Pack Implementation
       working-directory: dotNet
       run: dotnet pack ./CoreHelpers.TaskLogging --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .
+
+    - name: Pack Maintenance Abstractions
+      working-directory: dotNet
+      run: dotnet pack ./CoreHelpers.TaskLogging.Maintenance.Abstractions --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .
+
+    - name: Pack Maintenance Implementation
+      working-directory: dotNet
+      run: dotnet pack ./CoreHelpers.TaskLogging.Maintenance --configuration Release -p:PackageVersion=${{ steps.get_version.outputs.release_version }} --output .
         
     - name: Pack Log-Framework Integration
       working-directory: dotNet
@@ -69,6 +77,24 @@ jobs:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
         file: ./dotNet/CoreHelpers.TaskLogging.${{ steps.get_version.outputs.release_version }}.nupkg
         asset_name: CoreHelpers.TaskLogging.${{ steps.get_version.outputs.release_version }}.nupkg
+        tag: ${{ steps.get_version.outputs.release_tag }}
+        overwrite: true
+
+    - name: Upload Nuget Package - CoreHelpers.TaskLogging.Maintenance.Abstractions
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ./dotNet/CoreHelpers.TaskLogging.Maintenance.Abstractions.${{ steps.get_version.outputs.release_version }}.nupkg
+        asset_name: CoreHelpers.TaskLogging.Maintenance.Abstractions.${{ steps.get_version.outputs.release_version }}.nupkg
+        tag: ${{ steps.get_version.outputs.release_tag }}
+        overwrite: true
+
+    - name: Upload Nuget Package - CoreHelpers.TaskLogging.Maintenance
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ./dotNet/CoreHelpers.TaskLogging.Maintenance.${{ steps.get_version.outputs.release_version }}.nupkg
+        asset_name: CoreHelpers.TaskLogging.Maintenance.${{ steps.get_version.outputs.release_version }}.nupkg
         tag: ${{ steps.get_version.outputs.release_tag }}
         overwrite: true
        
