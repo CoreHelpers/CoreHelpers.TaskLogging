@@ -15,9 +15,9 @@ namespace CoreHelpers.Extensions.Logging.Tasks
 		public bool IsTaskAnnounced { get; set; } = false;
 		public bool LastLogWasAnError { get; set; } = false;
 
+		public readonly object PendingMessagesSyncRoot = new object();
 		public List<string> PendingMessages = new List<string>();
 
 		public TimeSpan CacheTimeSpan { get; set; } = TimeSpan.FromSeconds(30);
 	}
 }
-

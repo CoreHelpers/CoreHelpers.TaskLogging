@@ -12,12 +12,14 @@ namespace CoreHelpers.Extensions.Logging.Tasks
         private readonly string _categoryName;
         private readonly IExternalScopeProvider _scopeProvider;
         private readonly ITaskLoggerFactory _taskLoggerFactory;
+        private readonly TaskLoggerOptions _options;
 
-        public TaskLogger(string categoryName, IExternalScopeProvider scopeProvider, ITaskLoggerFactory taskLoggerFactory)
+        public TaskLogger(string categoryName, IExternalScopeProvider scopeProvider, ITaskLoggerFactory taskLoggerFactory, TaskLoggerOptions options)
         {
             _categoryName = categoryName;
             _scopeProvider = scopeProvider;
             _taskLoggerFactory = taskLoggerFactory;
+            _options = options;
         }
         
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
@@ -65,20 +67,9 @@ namespace CoreHelpers.Extensions.Logging.Tasks
                 _taskLoggerFactory.UpdateTaskStatus(taskLoggerState.TaskId, TaskStatus.Running).Wait();
                 return;
             }
-            
-            // in case of exception, we need to log it more in details
-            if (exception != null)
-            {
-                // set the last log as error so that the task will be marked as failed
-                taskLoggerState.LastLogWasAnError = true;
-                
-                // render the exception
-                LogException(logLevel, exception, formatter);
-                return;
-            }
-            
+
             // lock the messages to avoid concurrency issues
-            lock (taskLoggerState.PendingMessages)
+            lock (taskLoggerState.PendingMessagesSyncRoot)
             {
                 // check if we received the dispose message
                 if (eventId is { Id: 0, Name: "TaskScopeDisposed" })
@@ -97,31 +88,50 @@ namespace CoreHelpers.Extensions.Logging.Tasks
                 }
                 else
                 {
-                    // get the formated message
-                    var msg = formatter(state, exception);
-                    if (msg == null)
-                        return;
-                    
-                    // at this point we need to add the message to the scope
-                    taskLoggerState.PendingMessages.Add(msg);
+                    // Capture one UTC timestamp for the complete log entry, including all
+                    // messages generated while rendering an exception.
+                    var timestampUtc = DateTimeOffset.UtcNow;
 
-                    // at this point we need to flush if needed
-                    taskLoggerState.PendingMessages = new List<string>(_taskLoggerFactory.MergePendingMessagesIfNeeded(DateTimeOffset.Now, false, taskLoggerState.TaskId, taskLoggerState.PendingMessages.ToArray()).GetAwaiter().GetResult());
+                    if (exception != null)
+                    {
+                        taskLoggerState.LastLogWasAnError = true;
+                        LogException(taskLoggerState, logLevel, eventId, exception, timestampUtc);
+                    }
+                    else
+                    {
+                        var message = formatter(state, exception);
+                        if (message == null)
+                            return;
+
+                        AddPendingMessageAndMerge(taskLoggerState, logLevel, eventId, message, null, timestampUtc);
+                    }
                 }
             }
         }
+
+        private void AddPendingMessageAndMerge(TaskLoggerState taskLoggerState, LogLevel logLevel, EventId eventId, string message, Exception? exception, DateTimeOffset timestampUtc)
+        {
+            // Any provider-owned message prefix (for example the memory prefix) belongs
+            // in message before this context is created. The application formatter is
+            // deliberately the last transformation before insertion.
+            var context = new TaskLoggerMessageContext(logLevel, timestampUtc, _categoryName, eventId, message, exception);
+            var persistedMessage = _options.MessageFormatter?.Invoke(context) ?? message;
+            taskLoggerState.PendingMessages.Add(persistedMessage);
+
+            taskLoggerState.PendingMessages = new List<string>(_taskLoggerFactory.MergePendingMessagesIfNeeded(DateTimeOffset.Now, false, taskLoggerState.TaskId, taskLoggerState.PendingMessages.ToArray()).GetAwaiter().GetResult());
+        }
         
-        private void LogException<TState>(LogLevel logLevel, Exception exception, Func<TState, Exception?, string> formatter, bool innerException = false)
+        private void LogException(TaskLoggerState taskLoggerState, LogLevel logLevel, EventId eventId, Exception exception, DateTimeOffset timestampUtc, bool innerException = false)
         {
             if (innerException)
-                this.Log(logLevel, $"Inner Exception: {exception.Message}", null, formatter);
+                AddPendingMessageAndMerge(taskLoggerState, logLevel, eventId, $"Inner Exception: {exception.Message}", exception, timestampUtc);
             else
             {
-                this.Log(logLevel, $"Error with exception: {exception.Message}", null, formatter);                
+                AddPendingMessageAndMerge(taskLoggerState, logLevel, eventId, $"Error with exception: {exception.Message}", exception, timestampUtc);
                 try
                 {
-                    this.Log(logLevel, "Dumping Raw-JSON-Export of the exception", null, formatter);
-                    this.Log(logLevel, JsonConvert.SerializeObject(exception), null, formatter);
+                    AddPendingMessageAndMerge(taskLoggerState, logLevel, eventId, "Dumping Raw-JSON-Export of the exception", exception, timestampUtc);
+                    AddPendingMessageAndMerge(taskLoggerState, logLevel, eventId, JsonConvert.SerializeObject(exception), exception, timestampUtc);
                 }
                 catch (Exception)
                 {
@@ -134,11 +144,11 @@ namespace CoreHelpers.Extensions.Logging.Tasks
             {
                 var splittedError = exception.StackTrace.Split('\n');
                 foreach (var el in splittedError)
-                    this.Log(logLevel, el, null, formatter);
+                    AddPendingMessageAndMerge(taskLoggerState, logLevel, eventId, el, exception, timestampUtc);
             }
 
             if (exception.InnerException != null)
-                LogException(logLevel, exception.InnerException, formatter, true);
+                LogException(taskLoggerState, logLevel, eventId, exception.InnerException, timestampUtc, true);
         }
 
         public bool IsEnabled(LogLevel logLevel)

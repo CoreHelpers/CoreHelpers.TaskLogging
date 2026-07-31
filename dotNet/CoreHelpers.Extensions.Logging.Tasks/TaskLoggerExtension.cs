@@ -8,7 +8,17 @@ namespace CoreHelpers.Extensions.Logging.Tasks
     public static class TaskLoggerExtension
     {
         public static ILoggingBuilder AddTaskLogger(this ILoggingBuilder builder)
+            => AddTaskLogger(builder, _ => { });
+
+        public static ILoggingBuilder AddTaskLogger(this ILoggingBuilder builder, Action<TaskLoggerOptions> configure)
         {
+            if (configure == null)
+                throw new ArgumentNullException(nameof(configure));
+
+            var options = new TaskLoggerOptions();
+            configure(options);
+
+            builder.Services.AddSingleton(options);
             builder.Services.AddSingleton<ILoggerProvider, TaskLoggerProvider>();
             return builder;
         }
