@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CoreHelpers.TaskLogging.Mai
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CoreHelpers.Extensions.Logging.Tasks.Tests", "CoreHelpers.Extensions.Logging.Tasks.Tests\CoreHelpers.Extensions.Logging.Tasks.Tests.csproj", "{A14225F8-CB72-4B1C-B04F-3BB787A607B5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CoreHelpers.TaskLogging.Tests", "CoreHelpers.TaskLogging.Tests\CoreHelpers.TaskLogging.Tests.csproj", "{6FF16366-58ED-4773-8AC6-B5FE8255DD49}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -63,6 +65,10 @@ Global
 		{A14225F8-CB72-4B1C-B04F-3BB787A607B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A14225F8-CB72-4B1C-B04F-3BB787A607B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A14225F8-CB72-4B1C-B04F-3BB787A607B5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6FF16366-58ED-4773-8AC6-B5FE8255DD49}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6FF16366-58ED-4773-8AC6-B5FE8255DD49}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6FF16366-58ED-4773-8AC6-B5FE8255DD49}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6FF16366-58ED-4773-8AC6-B5FE8255DD49}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

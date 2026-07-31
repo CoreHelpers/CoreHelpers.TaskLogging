@@ -133,6 +133,25 @@ public sealed class TaskLoggerFormatterTests
         Assert.All(factory.MergeCalls, messages => Assert.Empty(messages));
     }
 
+    [Fact]
+    public void FailedMerge_KeepsPendingMessageForNextFlush()
+    {
+        var factory = new FakeTaskLoggerFactory();
+        using var services = CreateServices(factory);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("StorageFailureCategory");
+        var scope = Assert.IsAssignableFrom<ITaskLoggerScope>(logger.BeginTaskScope("task-4", TimeSpan.FromHours(1)));
+        var storageException = new InvalidOperationException("Storage unavailable");
+        factory.MergeException = storageException;
+
+        var aggregateException = Assert.Throws<AggregateException>(() => logger.Log(LogLevel.Information, new EventId(1, "Work"), "pending message", null, static (state, _) => state));
+        Assert.Same(storageException, aggregateException.InnerException);
+
+        factory.MergeException = null;
+        scope.Dispose();
+
+        Assert.Equal(new[] { "pending message" }, factory.MergeCalls.Last());
+    }
+
     private static ServiceProvider CreateServices(FakeTaskLoggerFactory factory, Action<TaskLoggerOptions>? configure = null)
     {
         var services = new ServiceCollection();

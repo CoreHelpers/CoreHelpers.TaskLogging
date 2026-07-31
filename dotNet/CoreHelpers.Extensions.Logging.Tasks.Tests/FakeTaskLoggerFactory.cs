@@ -11,10 +11,15 @@ internal sealed class FakeTaskLoggerFactory : ITaskLoggerFactory
 
     public Action<bool, string[]>? OnMerge { get; set; }
 
+    public Exception? MergeException { get; set; }
+
     public Task<string[]> MergePendingMessagesIfNeeded(DateTimeOffset flushTime, bool force, string taskKey, string[] messages)
     {
         MergeCalls.Add(messages.ToArray());
         OnMerge?.Invoke(force, messages);
+        if (MergeException != null)
+            throw MergeException;
+
         return Task.FromResult(messages);
     }
 

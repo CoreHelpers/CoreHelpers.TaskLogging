@@ -187,21 +187,10 @@ namespace CoreHelpers.TaskLogging
                     RowKey = BuildNextLogEntryTimestamp(),
                     Timestamp = flushTime,
                     Message = m
-                }));
+                })).ToArray();
 
             // create the entry
-            try
-            {
-                await tableClient.SubmitTransactionAsync(addEntitiesBatch);                
-            }
-            catch (Azure.RequestFailedException e)
-            {
-                if (e.ErrorCode != null && e.ErrorCode.Equals("TableNotFound"))
-                {
-                    await tableClient.CreateAsync();
-                    await tableClient.SubmitTransactionAsync(addEntitiesBatch);
-                }
-            }            
+            await ExecuteTableOperation(() => tableClient.SubmitTransactionAsync(addEntitiesBatch), () => tableClient.CreateIfNotExistsAsync());
         }
 
         private string GetTablePrefix()
@@ -269,28 +258,19 @@ namespace CoreHelpers.TaskLogging
             // get the table client
             var tableClient = _tableServiceClient.GetTableClient(tableName: tableName);
 
-            // process the entry
+            await ExecuteTableOperation(() => operation(tableClient), () => tableClient.CreateIfNotExistsAsync());
+        }
+
+        internal static async Task ExecuteTableOperation(Func<Task> operation, Func<Task> createTable)
+        {
             try
-            {                
-                await operation(tableClient);                
-            }
-            catch (Azure.RequestFailedException e)
             {
-                if (e.ErrorCode != null && e.ErrorCode.Equals("TableNotFound"))
-                {
-                    try
-                    {
-                        await tableClient.CreateAsync();
-                        
-                    // double check patter because of race conditions    
-                    } catch(Azure.RequestFailedException e2)
-                    {
-                        if (e2.ErrorCode != null && !e2.ErrorCode.Equals("TableAlreadyExists"))
-                            throw;
-                    }
-                    
-                    await operation(tableClient);
-                }
+                await operation();
+            }
+            catch (Azure.RequestFailedException e) when (string.Equals(e.ErrorCode, "TableNotFound", StringComparison.Ordinal))
+            {
+                await createTable();
+                await operation();
             }
         }
     }
@@ -310,4 +290,3 @@ namespace CoreHelpers.TaskLogging
         }
     }
 }
-
