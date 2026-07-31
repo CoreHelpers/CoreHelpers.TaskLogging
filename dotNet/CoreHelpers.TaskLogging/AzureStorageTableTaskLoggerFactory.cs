@@ -61,7 +61,7 @@ namespace CoreHelpers.TaskLogging
             };
 
             // get the table name
-            var tableName = GetTaskTable();
+            var tableName = GetTaskTable(taskKey);
 
             // add the entity
             await AddEntityToTable<AzureTableTaskEntity>(tableName, taskEntity, cancellationToken);
@@ -102,7 +102,7 @@ namespace CoreHelpers.TaskLogging
                 taskEntity.TaskEndDate = DateTimeOffset.UtcNow;
 
             // get the table name
-            var tableName = GetTaskTable();
+            var tableName = GetTaskTable(taskKey);
 
             // update the entity
             await UpdateEntityInTable<AzureTableTaskEntity>(tableName, taskEntity);
@@ -115,7 +115,7 @@ namespace CoreHelpers.TaskLogging
             else if  (taskStatus == TaskStatus.Failed)
             {
                 // store the task in the poisioned table
-                await AddEntityToTable<AzureTableTaskEntity>(GetFailedTaskTable(), taskEntity);
+                await AddEntityToTable<AzureTableTaskEntity>(GetFailedTaskTable(taskKey), taskEntity);
                 
                 // remove the task from running table
                 await DeleteEntityByKeys(GetRunningTaskTable(), taskKey, taskKey);
@@ -133,7 +133,7 @@ namespace CoreHelpers.TaskLogging
             };
             
             // get the table name
-            var tableName = GetTaskTable();
+            var tableName = GetTaskTable(taskId);
 
             // update the entity
             await UpdateEntityInTable<AzureTableTaskEntity>(tableName, taskEntity);
@@ -194,10 +194,7 @@ namespace CoreHelpers.TaskLogging
                 return;
 
             // get the table name
-            var tableName = GetTaskMessagesTable();
-
-            // get the table client
-            var tableClient = _tableServiceClient.GetTableClient(tableName: tableName);
+            var tableName = GetTaskMessagesTable(taskKey);
 
             // build the table transaction            
             var addEntitiesBatch = messages.Select(m => new TableTransactionAction(
@@ -211,7 +208,7 @@ namespace CoreHelpers.TaskLogging
                 })).ToArray();
 
             // create the entry
-            await ExecuteTableOperation(cancellationToken => tableClient.SubmitTransactionAsync(addEntitiesBatch, cancellationToken), cancellationToken => tableClient.CreateIfNotExistsAsync(cancellationToken), CancellationToken.None);
+            await SubmitTransactionToTable(tableName, addEntitiesBatch, CancellationToken.None);
         }
 
         internal static int GetNextMessageBatchSize(string taskKey, IReadOnlyList<string> messages)
@@ -248,8 +245,14 @@ namespace CoreHelpers.TaskLogging
         private string GetTableName(string tableName)
             => $"{GetTablePrefix()}{tableName}";        
 
-        private string GetTaskTable()
-            => GetTableName("Tasks");
+        private string GetTableName(string tableName, string taskKey)
+            => GetTimePartitionedTableName(_environmentPrefix, tableName, taskKey);
+
+        internal static string GetTimePartitionedTableName(string environmentPrefix, string tableName, string taskKey)
+            => $"{environmentPrefix}{AzureTableTimebasedKeyBuilder.GetReferenceTime(taskKey):yyyyMM}{tableName}";
+
+        private string GetTaskTable(string taskKey)
+            => GetTableName("Tasks", taskKey);
         
         private string GetExternalTaskIdLookupTable()
             => GetTableName("TasksExternalIdLookup");
@@ -257,11 +260,11 @@ namespace CoreHelpers.TaskLogging
         private string GetRunningTaskTable()
             => $"{_environmentPrefix}TasksRunning";
 
-        private string GetFailedTaskTable()
-            => GetTableName("TasksFailed");
+        private string GetFailedTaskTable(string taskKey)
+            => GetTableName("TasksFailed", taskKey);
 
-        private string GetTaskMessagesTable()
-            => GetTableName("Messages");
+        private string GetTaskMessagesTable(string taskKey)
+            => GetTableName("Messages", taskKey);
 
         private string BuildNextLogEntryTimestamp()
         {
@@ -278,14 +281,20 @@ namespace CoreHelpers.TaskLogging
             return string.Format("{0}-{1}", Convert.ToInt64(diff.TotalSeconds), localEntryCounter.ToString("00000000"));
         }
 
-        private async Task AddEntityToTable<T>(string tableName, T entity, CancellationToken cancellationToken = default) where T : ITableEntity
+        protected virtual async Task AddEntityToTable<T>(string tableName, T entity, CancellationToken cancellationToken = default) where T : ITableEntity
             => await ExecuteEntityToTableOperation(tableName, (TableClient tc, CancellationToken token) => tc.AddEntityAsync<T>(entity, token), cancellationToken);
 
-        private async Task UpdateEntityInTable<T>(string tableName, T entity, CancellationToken cancellationToken = default) where T : ITableEntity
+        protected virtual async Task UpdateEntityInTable<T>(string tableName, T entity, CancellationToken cancellationToken = default) where T : ITableEntity
             => await ExecuteEntityToTableOperation(tableName, (TableClient tc, CancellationToken token) => tc.UpdateEntityAsync<T>(entity, Azure.ETag.All, cancellationToken: token), cancellationToken);
 
-        private async Task DeleteEntityByKeys(string tableName, string pKey, string rowKey, CancellationToken cancellationToken = default)
+        protected virtual async Task DeleteEntityByKeys(string tableName, string pKey, string rowKey, CancellationToken cancellationToken = default)
             => await ExecuteEntityToTableOperation(tableName, (TableClient tc, CancellationToken token) => tc.DeleteEntityAsync(pKey, rowKey, Azure.ETag.All, token), cancellationToken);
+
+        protected virtual async Task SubmitTransactionToTable(string tableName, IReadOnlyList<TableTransactionAction> actions, CancellationToken cancellationToken)
+        {
+            var tableClient = _tableServiceClient.GetTableClient(tableName: tableName);
+            await ExecuteTableOperation(token => tableClient.SubmitTransactionAsync(actions, token), token => tableClient.CreateIfNotExistsAsync(token), cancellationToken);
+        }
 
         private async Task<T[]> QueryEntitiyFromTableByPartitionKey<T>(string tableName, string partitionKey, CancellationToken cancellationToken = default) where T : class, ITableEntity
         {

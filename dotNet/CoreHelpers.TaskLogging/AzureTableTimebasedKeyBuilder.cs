@@ -5,13 +5,32 @@ namespace CoreHelpers.TaskLogging
 {
 	public static class AzureTableTimebasedKeyBuilder
 	{
+        private const long MaxMoment = 9007199254740991; // Number.MAX_SAFE_INTEGER
+        private const string TaskKeyPrefix = "task";
+        private const int EncodedMomentLength = 16;
+
         public static string BuildDateTimeBasedRowKey(DateTimeOffset refTime, string postfix)
         {
-            long maxMoment = 9007199254740991; // Number.MAX_SAFE_INTEGER           
-            DateTime origin = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
-            TimeSpan diff = refTime.ToUniversalTime() - origin;
-            return $"task{Convert.ToInt64(maxMoment - diff.TotalSeconds)}{postfix}";
-        }        
+            return $"{TaskKeyPrefix}{MaxMoment - refTime.ToUnixTimeSeconds()}{postfix}";
+        }
+
+        internal static DateTimeOffset GetReferenceTime(string taskKey)
+        {
+            if (string.IsNullOrEmpty(taskKey) || !taskKey.StartsWith(TaskKeyPrefix, StringComparison.Ordinal) || taskKey.Length < TaskKeyPrefix.Length + EncodedMomentLength)
+                throw new ArgumentException("The task key does not contain a valid reference time.", nameof(taskKey));
+
+            var encodedMomentText = taskKey.Substring(TaskKeyPrefix.Length, EncodedMomentLength);
+            if (!long.TryParse(encodedMomentText, out var encodedMoment))
+                throw new ArgumentException("The task key does not contain a valid reference time.", nameof(taskKey));
+
+            try
+            {
+                return DateTimeOffset.FromUnixTimeSeconds(MaxMoment - encodedMoment);
+            }
+            catch (ArgumentOutOfRangeException exception)
+            {
+                throw new ArgumentException("The task key does not contain a valid reference time.", nameof(taskKey), exception);
+            }
+        }
     }
 }
-
