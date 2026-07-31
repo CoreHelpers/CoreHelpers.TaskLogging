@@ -13,6 +13,10 @@ internal sealed class FakeTaskLoggerFactory : ITaskLoggerFactory
 
     public Exception? MergeException { get; set; }
 
+    public Exception? AnnounceException { get; set; }
+
+    public Exception? StatusUpdateException { get; set; }
+
     public Func<int, string[], Exception?>? GetMergeException { get; set; }
 
     public int? PersistedMessageCountPerMerge { get; set; }
@@ -32,7 +36,7 @@ internal sealed class FakeTaskLoggerFactory : ITaskLoggerFactory
     }
 
     public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker)
-        => Task.FromResult("announced-task");
+        => AnnounceException == null ? Task.FromResult("announced-task") : Task.FromException<string>(AnnounceException);
 
     public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, CancellationToken cancellationToken)
         => Task.FromResult("announced-task");
@@ -52,7 +56,7 @@ internal sealed class FakeTaskLoggerFactory : ITaskLoggerFactory
     public Task UpdateTaskStatus(string taskId, LoggingTaskStatus taskStatus)
     {
         StatusUpdates.Add(taskStatus);
-        return Task.CompletedTask;
+        return StatusUpdateException == null ? Task.CompletedTask : Task.FromException(StatusUpdateException);
     }
 
     public Task UpdateTaskStatus(string taskId, LoggingTaskStatus taskStatus, string taskWorker)

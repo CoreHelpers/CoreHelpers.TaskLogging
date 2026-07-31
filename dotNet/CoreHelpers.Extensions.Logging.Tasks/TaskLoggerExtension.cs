@@ -40,8 +40,16 @@ namespace CoreHelpers.Extensions.Logging.Tasks
             var innerDisposable = logger.BeginScope<TaskLoggerState>(taskLoggerState);
             if (innerDisposable == null)
                 return null;
-            
-            return new TaskLoggerScope(logger, taskLoggerState, innerDisposable);
+
+            try
+            {
+                return new TaskLoggerScope(logger, taskLoggerState, innerDisposable);
+            }
+            catch
+            {
+                innerDisposable.Dispose();
+                throw;
+            }
         } 
     }
 }

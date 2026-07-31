@@ -222,6 +222,40 @@ public sealed class TaskLoggerFormatterTests
         Assert.Equal(mergeCallCount, factory.MergeCalls.Count);
     }
 
+    [Fact]
+    public void FailedTaskAnnouncement_ReleasesInnerScope()
+    {
+        var factory = new FakeTaskLoggerFactory
+        {
+            AnnounceException = new InvalidOperationException("Announcement failed")
+        };
+        using var services = CreateServices(factory);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("AnnouncementFailureCategory");
+
+        Assert.Throws<AggregateException>(() => logger.BeginNewTaskScope("type", "source", "worker", TimeSpan.FromHours(1)));
+
+        factory.AnnounceException = null;
+        logger.LogInformation("outside failed scope");
+        Assert.Empty(factory.MergeCalls);
+    }
+
+    [Fact]
+    public void FailedRunningStatusUpdate_ReleasesInnerScope()
+    {
+        var factory = new FakeTaskLoggerFactory
+        {
+            StatusUpdateException = new InvalidOperationException("Status update failed")
+        };
+        using var services = CreateServices(factory);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("StatusFailureCategory");
+
+        Assert.Throws<AggregateException>(() => logger.BeginTaskScope("task-with-failed-status", TimeSpan.FromHours(1)));
+
+        factory.StatusUpdateException = null;
+        logger.LogInformation("outside failed scope");
+        Assert.Empty(factory.MergeCalls);
+    }
+
     private static ServiceProvider CreateServices(FakeTaskLoggerFactory factory, Action<TaskLoggerOptions>? configure = null)
     {
         var services = new ServiceCollection();
