@@ -30,8 +30,14 @@ namespace CoreHelpers.Extensions.Logging.Tasks
         public void Dispose()
         {
             _flushTimer.Dispose();
-            _logger.Log(LogLevel.None, new EventId(0, "TaskScopeDisposed"), string.Empty);
-            _innerDisposable.Dispose();
+            try
+            {
+                _logger.Log(LogLevel.None, new EventId(0, "TaskScopeDisposed"), string.Empty);
+            }
+            finally
+            {
+                _innerDisposable.Dispose();
+            }
         }
 
         public string TaskId => _taskLoggerState.TaskId;

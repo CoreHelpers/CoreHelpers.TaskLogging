@@ -75,7 +75,7 @@ namespace CoreHelpers.Extensions.Logging.Tasks
                 if (eventId is { Id: 0, Name: "TaskScopeDisposed" })
                 {
                     // at this point we need to flush if needed
-                    taskLoggerState.PendingMessages = new List<string>(_taskLoggerFactory.MergePendingMessagesIfNeeded(DateTimeOffset.Now, true, taskLoggerState.TaskId, taskLoggerState.PendingMessages.ToArray()).GetAwaiter().GetResult());
+                    MergePendingMessages(taskLoggerState, true, true);
                     
                     // ensure the task is finished now                
                     _taskLoggerFactory.UpdateTaskStatus(taskLoggerState.TaskId, taskLoggerState.LastLogWasAnError ? TaskStatus.Failed : TaskStatus.Succeed).GetAwaiter().GetResult();
@@ -84,7 +84,7 @@ namespace CoreHelpers.Extensions.Logging.Tasks
                 else if (eventId is { Id: 0, Name: "TaskScopeFlushRequired" })
                 {
                     // at this point we need to flush if needed
-                    taskLoggerState.PendingMessages = new List<string>(_taskLoggerFactory.MergePendingMessagesIfNeeded(DateTimeOffset.Now, true, taskLoggerState.TaskId, taskLoggerState.PendingMessages.ToArray()).GetAwaiter().GetResult());
+                    MergePendingMessages(taskLoggerState, true, false);
                 }
                 else
                 {
@@ -118,7 +118,19 @@ namespace CoreHelpers.Extensions.Logging.Tasks
             var persistedMessage = _options.MessageFormatter?.Invoke(context) ?? message;
             taskLoggerState.PendingMessages.Add(persistedMessage);
 
-            taskLoggerState.PendingMessages = new List<string>(_taskLoggerFactory.MergePendingMessagesIfNeeded(DateTimeOffset.Now, false, taskLoggerState.TaskId, taskLoggerState.PendingMessages.ToArray()).GetAwaiter().GetResult());
+            MergePendingMessages(taskLoggerState, false, false);
+        }
+
+        private void MergePendingMessages(TaskLoggerState taskLoggerState, bool force, bool throwOnFailure)
+        {
+            try
+            {
+                taskLoggerState.PendingMessages = new List<string>(_taskLoggerFactory.MergePendingMessagesIfNeeded(DateTimeOffset.Now, force, taskLoggerState.TaskId, taskLoggerState.PendingMessages.ToArray()).GetAwaiter().GetResult());
+            }
+            catch when (!throwOnFailure)
+            {
+                // Keep the pending messages and retry them with the next log or timer flush.
+            }
         }
         
         private void LogException(TaskLoggerState taskLoggerState, LogLevel logLevel, EventId eventId, Exception exception, DateTimeOffset timestampUtc, bool innerException = false)

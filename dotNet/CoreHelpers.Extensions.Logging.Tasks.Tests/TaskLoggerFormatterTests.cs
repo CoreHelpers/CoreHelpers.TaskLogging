@@ -29,12 +29,13 @@ public sealed class TaskLoggerFormatterTests
         var factory = new FakeTaskLoggerFactory();
         TaskLoggerMessageContext? capturedContext = null;
         var callOrder = new List<string>();
+        string? messageSeenByMerge = null;
         factory.OnMerge = (force, messages) =>
         {
             if (!force)
             {
                 callOrder.Add("merge");
-                Assert.StartsWith("[Warning]", messages.Single());
+                messageSeenByMerge = messages.Single();
             }
         };
         var before = DateTimeOffset.UtcNow;
@@ -67,6 +68,7 @@ public sealed class TaskLoggerFormatterTests
         Assert.InRange(context.TimestampUtc, before, after);
         Assert.Equal($"[Warning] [{context.TimestampUtc:O}] - raw message", factory.MergeCalls.Last().Single());
         Assert.Equal(new[] { "formatter", "merge" }, callOrder);
+        Assert.StartsWith("[Warning]", Assert.IsType<string>(messageSeenByMerge));
     }
 
     [Fact]
@@ -134,7 +136,7 @@ public sealed class TaskLoggerFormatterTests
     }
 
     [Fact]
-    public void FailedMerge_KeepsPendingMessageForNextFlush()
+    public void FailedRegularAndTimerMerges_KeepPendingMessageWithoutInterruptingCaller()
     {
         var factory = new FakeTaskLoggerFactory();
         using var services = CreateServices(factory);
@@ -143,13 +145,35 @@ public sealed class TaskLoggerFormatterTests
         var storageException = new InvalidOperationException("Storage unavailable");
         factory.MergeException = storageException;
 
-        var aggregateException = Assert.Throws<AggregateException>(() => logger.Log(LogLevel.Information, new EventId(1, "Work"), "pending message", null, static (state, _) => state));
-        Assert.Same(storageException, aggregateException.InnerException);
+        logger.Log(LogLevel.Information, new EventId(1, "Work"), "pending message", null, static (state, _) => state);
+        LogLifecycleEvent(logger, "TaskScopeFlushRequired");
 
         factory.MergeException = null;
         scope.Dispose();
 
         Assert.Equal(new[] { "pending message" }, factory.MergeCalls.Last());
+    }
+
+    [Fact]
+    public void FailedDisposeMerge_PropagatesAndReleasesInnerScope()
+    {
+        var factory = new FakeTaskLoggerFactory();
+        using var services = CreateServices(factory);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("DisposeFailureCategory");
+        var scope = Assert.IsAssignableFrom<ITaskLoggerScope>(logger.BeginTaskScope("task-5", TimeSpan.FromHours(1)));
+        logger.Log(LogLevel.Information, new EventId(1, "Work"), "pending message", null, static (state, _) => state);
+        var storageException = new InvalidOperationException("Storage unavailable");
+        factory.MergeException = storageException;
+
+        var aggregateException = Assert.Throws<AggregateException>(() => scope.Dispose());
+        Assert.Same(storageException, aggregateException.InnerException);
+        Assert.DoesNotContain(CoreHelpers.TaskLogging.TaskStatus.Succeed, factory.StatusUpdates);
+        Assert.DoesNotContain(CoreHelpers.TaskLogging.TaskStatus.Failed, factory.StatusUpdates);
+
+        factory.MergeException = null;
+        var mergeCallCount = factory.MergeCalls.Count;
+        logger.LogInformation("outside disposed scope");
+        Assert.Equal(mergeCallCount, factory.MergeCalls.Count);
     }
 
     private static ServiceProvider CreateServices(FakeTaskLoggerFactory factory, Action<TaskLoggerOptions>? configure = null)
