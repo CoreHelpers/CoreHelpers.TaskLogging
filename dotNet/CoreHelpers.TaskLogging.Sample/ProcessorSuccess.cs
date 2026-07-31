@@ -13,11 +13,11 @@ namespace CoreHelpers.TaskLogging.Sample
             _logger = logger;
 		}
 
-        public async Task Execute()
+        public async Task Execute(CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             _logger.LogInformation("Hello from the processor");
             await Task.CompletedTask;
         }
     }
 }
-

@@ -20,13 +20,13 @@ namespace CoreHelpers.TaskLogging.Sample
             _appLifetime = appLifetime;
 		}
 
-		public async Task Process()
+		public async Task Process(CancellationToken cancellationToken)
 		{           
 			// spawn some parallel tasks
 				_logger.LogInformation("Spawning parallel tasks");
 			var tasks = new List<Task>();
 			for (int i = 0; i < 5; i++) 
-				tasks.Add(SpawnTask(i));
+				tasks.Add(SpawnTask(i, cancellationToken));
 			
 			// wait for all tasks to be completed
 			_logger.LogInformation("Waiting for task completion");
@@ -34,7 +34,7 @@ namespace CoreHelpers.TaskLogging.Sample
 			_logger.LogInformation("All tasks completed");
         }
 
-		private Task SpawnTask(int iTaskNumber)
+		private Task SpawnTask(int iTaskNumber, CancellationToken cancellationToken)
 		{
 			return Task.Run(async () =>
 			{
@@ -46,27 +46,26 @@ namespace CoreHelpers.TaskLogging.Sample
 				// log something in the context of the task
 				_logger.LogInformation($"T{iTaskNumber}: Started task {iTaskNumber}");
 				
-				await Task.Delay(1000);
+				await Task.Delay(1000, cancellationToken);
 				_logger.LogInformation($"T{iTaskNumber}: Turn 01");
 				
-				await Task.Delay(1000);
+				await Task.Delay(1000, cancellationToken);
 				_logger.LogInformation($"T{iTaskNumber}: Turn 02");
 				
-				await Task.Delay(1000);
+				await Task.Delay(1000, cancellationToken);
 				_logger.LogInformation($"T{iTaskNumber}: Turn 03");
 				
-				await Task.Delay(1000);
+				await Task.Delay(1000, cancellationToken);
 				_logger.LogInformation($"T{iTaskNumber}: Turn 04");
 				
-				await Task.Delay(1000);
+				await Task.Delay(1000, cancellationToken);
 				_logger.LogInformation($"T{iTaskNumber}: Turn 05");
 
 				if (iTaskNumber == 2)
 					_logger.LogCritical(new Exception("Hello World"), "Hello World");
 				
 				_logger.LogInformation($"T{iTaskNumber}: Executed task {iTaskNumber}");
-			});
+			}, cancellationToken);
 		}
     }
 }
-

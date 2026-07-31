@@ -25,15 +25,15 @@ namespace CoreHelpers.TaskLogging.Sample
             // execute the success processor
             using (_logger.BeginNewTaskScope("successjob", "q", "w"))
 			{				
-				await _processors.Where(p => p is ProcessorSuccess).First().Execute();								
+				await _processors.Where(p => p is ProcessorSuccess).First().Execute(stoppingToken);
 			}
 
             // execute the failedprocessor
             using (var scope = _logger.BeginNewTaskScope("failedjob", "q", "w", "app=CoreHelpers.TaskLogging.Sample,class=Main"))
-            {
-	            Console.WriteLine(scope.TaskId);
-                await _processors.Where(p => p is ProcessorFailed).First().Execute();
-            }
+	            {
+		            Console.WriteLine(scope.TaskId);
+	                await _processors.Where(p => p is ProcessorFailed).First().Execute(stoppingToken);
+	            }
 
             // execute the succssprocesssor with announcement            
             var metaData = new Dictionary<string, string>()
@@ -42,17 +42,17 @@ namespace CoreHelpers.TaskLogging.Sample
                 { "class", "Main"}
             };
 
-            var taskId = await _taskLoggerFactory.AnnounceTask("announcejob", "q", "w", metaData);
+            var taskId = await _taskLoggerFactory.AnnounceTask("announcejob", "q", "w", metaData).WaitAsync(stoppingToken);
 			var externalId = Guid.NewGuid().ToString();
 
-			await _taskLoggerFactory.RegisterExternlIdForTask(taskId, externalId);
+			await _taskLoggerFactory.RegisterExternlIdForTask(taskId, externalId).WaitAsync(stoppingToken);
             using (_logger.BeginTaskScope(taskId))
             {
-	            var lookedUpTaskId = await _taskLoggerFactory.LookupTaskIdByExternalId(externalId);
+	            var lookedUpTaskId = await _taskLoggerFactory.LookupTaskIdByExternalId(externalId).WaitAsync(stoppingToken);
 	            if (lookedUpTaskId != taskId)
 		            throw new Exception($"Task with id {lookedUpTaskId} was not found");
 	            
-                await _processors.Where(p => p is ProcessorSuccess).First().Execute();
+                await _processors.Where(p => p is ProcessorSuccess).First().Execute(stoppingToken);
             }
             
             // execute the success processor

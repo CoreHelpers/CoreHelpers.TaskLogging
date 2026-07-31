@@ -13,17 +13,25 @@ namespace CoreHelpers.TaskLogging.Sample
             _logger = logger;
 		}
 
-        public async Task Execute()
+        public async Task Execute(CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             await Task.CompletedTask;
 
             try
             {
                 // log some lines
                 for (int i = 0; i < 10; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
                     _logger.LogInformation($"{i} Hello World Task 2");
+                }
 
                 throw new Exception("I failed!");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception e)
             {
@@ -32,4 +40,3 @@ namespace CoreHelpers.TaskLogging.Sample
         }
     }
 }
-
