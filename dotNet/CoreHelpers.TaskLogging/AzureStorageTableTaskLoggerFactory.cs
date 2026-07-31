@@ -11,6 +11,11 @@ namespace CoreHelpers.TaskLogging
 {
     internal class AzureStorageTableTaskLoggerFactory : ITaskLoggerFactory
     {
+        internal const int MaxTransactionEntityCount = 100;
+        internal const int MaxTransactionSizeInBytes = 4 * 1024 * 1024;
+        private const int TransactionEnvelopeSizeInBytes = 4 * 1024;
+        private const int EntityEnvelopeSizeInBytes = 4 * 1024;
+        private const int MaxJsonEncodedBytesPerCharacter = 6;
         private readonly int _cacheLimit;
         private readonly TimeSpan _cacheTimespan;
         private readonly string _environmentPrefix;
@@ -156,10 +161,11 @@ namespace CoreHelpers.TaskLogging
         public async Task<string[]> MergePendingMessagesIfNeeded(DateTimeOffset flushTime, bool force, string taskKey, string[] messages)
         {
             // check if the cache limit is exceeded
-            if (messages.Length >= _cacheLimit || force)
+            if (messages.Length >= Math.Min(_cacheLimit, MaxTransactionEntityCount) || force)
             {
-                await MergePendingMessages(flushTime, taskKey, messages);
-                return Array.Empty<string>();
+                var batchSize = GetNextMessageBatchSize(taskKey, messages);
+                await MergePendingMessages(flushTime, taskKey, messages.Take(batchSize).ToArray());
+                return messages.Skip(batchSize).ToArray();
             }
 
             // at this point we didn't flush anything
@@ -191,6 +197,34 @@ namespace CoreHelpers.TaskLogging
 
             // create the entry
             await ExecuteTableOperation(() => tableClient.SubmitTransactionAsync(addEntitiesBatch), () => tableClient.CreateIfNotExistsAsync());
+        }
+
+        internal static int GetNextMessageBatchSize(string taskKey, IReadOnlyList<string> messages)
+        {
+            var batchSize = 0;
+            var transactionSize = TransactionEnvelopeSizeInBytes;
+
+            while (batchSize < messages.Count && batchSize < MaxTransactionEntityCount)
+            {
+                var entitySize = GetMessageEntitySize(taskKey, messages[batchSize]);
+                if (batchSize > 0 && transactionSize + entitySize > MaxTransactionSizeInBytes)
+                    break;
+
+                if (transactionSize + entitySize > MaxTransactionSizeInBytes)
+                    throw new InvalidOperationException("A task log message is too large for an Azure Table transaction.");
+
+                transactionSize += entitySize;
+                batchSize++;
+            }
+
+            return batchSize;
+        }
+
+        internal static int GetMessageEntitySize(string taskKey, string message)
+        {
+            // A UTF-16 character can occupy up to six bytes when JSON escaped. The
+            // fixed allowance covers the other properties and multipart headers.
+            return checked((taskKey.Length + message.Length) * MaxJsonEncodedBytesPerCharacter + EntityEnvelopeSizeInBytes);
         }
 
         private string GetTablePrefix()

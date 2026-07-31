@@ -155,6 +155,34 @@ public sealed class TaskLoggerFormatterTests
     }
 
     [Fact]
+    public void FailedLaterBatch_RetriesOnlyMessagesThatWereNotPersisted()
+    {
+        var factory = new FakeTaskLoggerFactory
+        {
+            PersistedMessageCountPerMerge = 2,
+            PersistOnlyWhenForced = true,
+            GetMergeException = (_, messages) => messages.SequenceEqual(new[] { "third", "fourth" }) ? new InvalidOperationException("Storage unavailable") : null
+        };
+        using var services = CreateServices(factory);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("PartialFlushCategory");
+        var scope = Assert.IsAssignableFrom<ITaskLoggerScope>(logger.BeginTaskScope("task-6", TimeSpan.FromHours(1)));
+
+        logger.LogInformation("first");
+        logger.LogInformation("second");
+        logger.LogInformation("third");
+        logger.LogInformation("fourth");
+        LogLifecycleEvent(logger, "TaskScopeFlushRequired");
+
+        factory.GetMergeException = null;
+        scope.Dispose();
+
+        var batchCalls = factory.MergeCalls.TakeLast(3).ToArray();
+        Assert.Equal(new[] { "first", "second", "third", "fourth" }, batchCalls[0]);
+        Assert.Equal(new[] { "third", "fourth" }, batchCalls[1]);
+        Assert.Equal(new[] { "third", "fourth" }, batchCalls[2]);
+    }
+
+    [Fact]
     public void FailedDisposeMerge_PropagatesAndReleasesInnerScope()
     {
         var factory = new FakeTaskLoggerFactory();

@@ -13,14 +13,22 @@ internal sealed class FakeTaskLoggerFactory : ITaskLoggerFactory
 
     public Exception? MergeException { get; set; }
 
+    public Func<int, string[], Exception?>? GetMergeException { get; set; }
+
+    public int? PersistedMessageCountPerMerge { get; set; }
+
+    public bool PersistOnlyWhenForced { get; set; }
+
     public Task<string[]> MergePendingMessagesIfNeeded(DateTimeOffset flushTime, bool force, string taskKey, string[] messages)
     {
         MergeCalls.Add(messages.ToArray());
         OnMerge?.Invoke(force, messages);
-        if (MergeException != null)
-            throw MergeException;
+        var mergeException = GetMergeException?.Invoke(MergeCalls.Count, messages) ?? MergeException;
+        if (mergeException != null)
+            throw mergeException;
 
-        return Task.FromResult(messages);
+        var shouldPersist = PersistedMessageCountPerMerge.HasValue && (!PersistOnlyWhenForced || force);
+        return Task.FromResult(shouldPersist ? messages.Skip(PersistedMessageCountPerMerge!.Value).ToArray() : messages);
     }
 
     public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker)

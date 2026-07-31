@@ -123,13 +123,25 @@ namespace CoreHelpers.Extensions.Logging.Tasks
 
         private void MergePendingMessages(TaskLoggerState taskLoggerState, bool force, bool throwOnFailure)
         {
-            try
+            var firstMerge = true;
+            while (firstMerge || taskLoggerState.PendingMessages.Count > 0)
             {
-                taskLoggerState.PendingMessages = new List<string>(_taskLoggerFactory.MergePendingMessagesIfNeeded(DateTimeOffset.Now, force, taskLoggerState.TaskId, taskLoggerState.PendingMessages.ToArray()).GetAwaiter().GetResult());
-            }
-            catch when (!throwOnFailure)
-            {
-                // Keep the pending messages and retry them with the next log or timer flush.
+                firstMerge = false;
+                var pendingMessageCount = taskLoggerState.PendingMessages.Count;
+
+                try
+                {
+                    taskLoggerState.PendingMessages = new List<string>(_taskLoggerFactory.MergePendingMessagesIfNeeded(DateTimeOffset.Now, force, taskLoggerState.TaskId, taskLoggerState.PendingMessages.ToArray()).GetAwaiter().GetResult());
+                }
+                catch when (!throwOnFailure)
+                {
+                    // Keep only the messages not persisted by earlier batches and retry
+                    // them with the next log or timer flush.
+                    return;
+                }
+
+                if (taskLoggerState.PendingMessages.Count >= pendingMessageCount)
+                    return;
             }
         }
         

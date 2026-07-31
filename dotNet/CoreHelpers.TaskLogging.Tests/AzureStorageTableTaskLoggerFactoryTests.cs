@@ -6,6 +6,30 @@ namespace CoreHelpers.TaskLogging.Tests;
 public sealed class AzureStorageTableTaskLoggerFactoryTests
 {
     [Fact]
+    public void GetNextMessageBatchSize_LimitsBatchToOneHundredEntities()
+    {
+        var messages = Enumerable.Range(0, 101).Select(index => $"message-{index}").ToArray();
+
+        var batchSize = AzureStorageTableTaskLoggerFactory.GetNextMessageBatchSize("task", messages);
+
+        Assert.Equal(AzureStorageTableTaskLoggerFactory.MaxTransactionEntityCount, batchSize);
+    }
+
+    [Fact]
+    public void GetNextMessageBatchSize_LimitsBatchToFourMiB()
+    {
+        var message = new string('"', 350_000);
+        var messages = Enumerable.Repeat(message, 10).ToArray();
+
+        var batchSize = AzureStorageTableTaskLoggerFactory.GetNextMessageBatchSize("task", messages);
+        var batchSizeInBytes = 4 * 1024 + messages.Take(batchSize).Sum(item => AzureStorageTableTaskLoggerFactory.GetMessageEntitySize("task", item));
+        var nextEntitySize = AzureStorageTableTaskLoggerFactory.GetMessageEntitySize("task", messages[batchSize]);
+
+        Assert.InRange(batchSizeInBytes, 1, AzureStorageTableTaskLoggerFactory.MaxTransactionSizeInBytes);
+        Assert.True(batchSizeInBytes + nextEntitySize > AzureStorageTableTaskLoggerFactory.MaxTransactionSizeInBytes);
+    }
+
+    [Fact]
     public async Task ExecuteTableOperation_WhenTableIsMissing_CreatesTableAndRetries()
     {
         var operationCalls = 0;
