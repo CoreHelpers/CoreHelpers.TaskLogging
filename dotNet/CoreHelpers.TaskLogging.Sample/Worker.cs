@@ -5,7 +5,7 @@ using Microsoft.Extensions.Hosting;
 
 namespace CoreHelpers.TaskLogging.Sample
 {
-	internal class Worker
+	internal class Worker : BackgroundService
 	{
 		private readonly ILogger<Worker> _logger;
 		private readonly IEnumerable<IProcessor> _processors;
@@ -20,7 +20,7 @@ namespace CoreHelpers.TaskLogging.Sample
             _appLifetime = appLifetime;
 		}
 
-		public async Task Process()
+		protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 		{           
             // execute the success processor
             using (_logger.BeginNewTaskScope("successjob", "q", "w"))
@@ -58,18 +58,9 @@ namespace CoreHelpers.TaskLogging.Sample
             // execute the success processor
             using (var typedLoggerTaskScope = _logger.BeginNewTaskScope("successjob", "q", "w"))
             {
-	            // in the scope of the task a shutdown handler will be registered
-	            _appLifetime.ApplicationStopping.Register(() =>
-	            {
-		            _logger.LogError("We are shutting down the application");
-					if (typedLoggerTaskScope != null)
-						typedLoggerTaskScope.Dispose();
-					
-	            });
-	            
 	            // log something
 	            _logger.LogInformation("Will be logged in the timespan");
-	            await Task.Delay(TimeSpan.FromSeconds(60));
+	            await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
 	            
 	            // log something
 	            _logger.LogInformation(("Logging something we should see after graceful shurtdown"));
@@ -78,7 +69,7 @@ namespace CoreHelpers.TaskLogging.Sample
 	            _appLifetime.StopApplication();
 	            
 	            // prevent the application code to leave the scope
-	            await Task.Delay(TimeSpan.FromHours(1));
+	            await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
 	            
 	            // log something we never see again
 	            _logger.LogInformation(("This should never be shown"));
@@ -87,4 +78,3 @@ namespace CoreHelpers.TaskLogging.Sample
         }
     }
 }
-

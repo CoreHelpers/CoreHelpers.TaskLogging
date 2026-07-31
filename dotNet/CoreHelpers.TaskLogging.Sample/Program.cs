@@ -20,17 +20,11 @@ builder.Services.AddLogging((configure) => configure
 
 builder.Services.AddTransient<IProcessor, ProcessorSuccess>();
 builder.Services.AddTransient<IProcessor, ProcessorFailed>();
-builder.Services.AddTransient<Worker>();
+builder.Services.AddHostedService<Worker>();
 builder.Services.AddTransient<WorkerParallelTasks>();
 
 // build the host
 using IHost host = builder.Build();
 
-// get the worker
-//var worker = host.Services.GetService<WorkerParallelTasks>();
-var worker = host.Services.GetService<Worker>();
-if (worker == null)
-    throw new NullReferenceException();
-
-// execute the work
-await worker.Process();
+// start the host and execute the registered background worker
+await host.RunAsync();
