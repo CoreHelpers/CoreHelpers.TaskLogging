@@ -58,21 +58,29 @@ namespace CoreHelpers.TaskLogging.Sample
             // execute the success processor
             using (var typedLoggerTaskScope = _logger.BeginNewTaskScope("successjob", "q", "w"))
             {
-	            // log something
-	            _logger.LogInformation("Will be logged in the timespan");
-	            await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
-	            
-	            // log something
-	            _logger.LogInformation(("Logging something we should see after graceful shurtdown"));
-	            
-	            // trigger a graceful shutdown
-	            _appLifetime.StopApplication();
-	            
-	            // prevent the application code to leave the scope
-	            await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
-	            
-	            // log something we never see again
-	            _logger.LogInformation(("This should never be shown"));
+	            try
+	            {
+		            // log something
+		            _logger.LogInformation("Will be logged in the timespan");
+		            await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
+
+		            // log something
+		            _logger.LogInformation(("Logging something we should see after graceful shurtdown"));
+
+		            // trigger a graceful shutdown
+		            _appLifetime.StopApplication();
+
+		            // prevent the application code to leave the scope
+		            await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
+
+		            // log something we never see again
+		            _logger.LogInformation(("This should never be shown"));
+	            }
+	            catch (OperationCanceledException exception) when (stoppingToken.IsCancellationRequested)
+	            {
+		            _logger.LogWarning(exception, "Task was canceled during application shutdown.");
+		            throw;
+	            }
             }
             
         }

@@ -107,6 +107,24 @@ public sealed class TaskLoggerFormatterTests
     }
 
     [Fact]
+    public void LoggedCancellationBeforeDispose_MarksTaskAsFailedRatherThanSucceed()
+    {
+        var factory = new FakeTaskLoggerFactory();
+        using var services = CreateServices(factory);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("CancellationCategory");
+        var scope = Assert.IsAssignableFrom<ITaskLoggerScope>(logger.BeginTaskScope("canceled-task", TimeSpan.FromHours(1)));
+        using var cancellationTokenSource = new CancellationTokenSource();
+        cancellationTokenSource.Cancel();
+        var exception = new OperationCanceledException(cancellationTokenSource.Token);
+
+        logger.LogWarning(exception, "Task was canceled during application shutdown.");
+        scope.Dispose();
+
+        Assert.Equal(CoreHelpers.TaskLogging.TaskStatus.Failed, factory.StatusUpdates.Last());
+        Assert.DoesNotContain(CoreHelpers.TaskLogging.TaskStatus.Succeed, factory.StatusUpdates);
+    }
+
+    [Fact]
     public void LifecycleEvents_AreNeitherFormattedNorPersisted()
     {
         var factory = new FakeTaskLoggerFactory();
