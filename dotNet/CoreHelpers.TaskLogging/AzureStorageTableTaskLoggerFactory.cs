@@ -30,10 +30,16 @@ namespace CoreHelpers.TaskLogging
             _cacheTimespan = cacheTimespan;
         }
 
-        public async Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker)
-            => await AnnounceTask(taskType, taskSource, taskWorker, string.Empty);
+        public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker)
+            => AnnounceTask(taskType, taskSource, taskWorker, string.Empty, CancellationToken.None);
 
-        public async Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData)
+        public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, CancellationToken cancellationToken)
+            => AnnounceTask(taskType, taskSource, taskWorker, string.Empty, cancellationToken);
+
+        public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData)
+            => AnnounceTask(taskType, taskSource, taskWorker, metaData, CancellationToken.None);
+
+        public async Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData, CancellationToken cancellationToken)
         {
             // define the refDate
             var refDate = DateTime.UtcNow;
@@ -58,14 +64,17 @@ namespace CoreHelpers.TaskLogging
             var tableName = GetTaskTable();
 
             // add the entity
-            await AddEntityToTable<AzureTableTaskEntity>(tableName, taskEntity);
+            await AddEntityToTable<AzureTableTaskEntity>(tableName, taskEntity, cancellationToken);
 
             // done
             return taskKey;
         }
 
         public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped)
-            => AnnounceTask(taskType, taskSource, taskWorker, JsonConvert.SerializeObject(metaDataTyped));
+            => AnnounceTask(taskType, taskSource, taskWorker, metaDataTyped, CancellationToken.None);
+
+        public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped, CancellationToken cancellationToken)
+            => AnnounceTask(taskType, taskSource, taskWorker, JsonConvert.SerializeObject(metaDataTyped), cancellationToken);
         
         public async Task UpdateTaskStatus(string taskKey, TaskStatus taskStatus)
         {            
@@ -130,20 +139,26 @@ namespace CoreHelpers.TaskLogging
             await UpdateEntityInTable<AzureTableTaskEntity>(tableName, taskEntity);
         }
 
-        public async Task<string?> LookupTaskIdByExternalId(string externalTaskId)
+        public Task<string?> LookupTaskIdByExternalId(string externalTaskId)
+            => LookupTaskIdByExternalId(externalTaskId, CancellationToken.None);
+
+        public async Task<string?> LookupTaskIdByExternalId(string externalTaskId, CancellationToken cancellationToken)
         {
             // get the table name
             var tableName = GetExternalTaskIdLookupTable();
 
             // lookup 
-            var externalIdEnties = await QueryEntitiyFromTableByPartitionKey<AzureTableTaskEntity>(tableName, externalTaskId);
+            var externalIdEnties = await QueryEntitiyFromTableByPartitionKey<AzureTableTaskEntity>(tableName, externalTaskId, cancellationToken);
             if (externalIdEnties.Length == 0)
                 return null;
 
             return externalIdEnties.First().RowKey;
         }
 
-        public async Task RegisterExternlIdForTask(string taskId, string externalTaskId)
+        public Task RegisterExternlIdForTask(string taskId, string externalTaskId)
+            => RegisterExternlIdForTask(taskId, externalTaskId, CancellationToken.None);
+
+        public async Task RegisterExternlIdForTask(string taskId, string externalTaskId, CancellationToken cancellationToken)
         {
             // build the task entity
             var externalIdForTaskEntity = new AzureTableTaskEntity()
@@ -155,7 +170,7 @@ namespace CoreHelpers.TaskLogging
             // get the table name
             var tableName = GetExternalTaskIdLookupTable();
             
-            await AddEntityToTable<AzureTableTaskEntity>(tableName, externalIdForTaskEntity);
+            await AddEntityToTable<AzureTableTaskEntity>(tableName, externalIdForTaskEntity, cancellationToken);
         }
 
         public async Task<string[]> MergePendingMessagesIfNeeded(DateTimeOffset flushTime, bool force, string taskKey, string[] messages)
@@ -196,7 +211,7 @@ namespace CoreHelpers.TaskLogging
                 })).ToArray();
 
             // create the entry
-            await ExecuteTableOperation(() => tableClient.SubmitTransactionAsync(addEntitiesBatch), () => tableClient.CreateIfNotExistsAsync());
+            await ExecuteTableOperation(cancellationToken => tableClient.SubmitTransactionAsync(addEntitiesBatch, cancellationToken), cancellationToken => tableClient.CreateIfNotExistsAsync(cancellationToken), CancellationToken.None);
         }
 
         internal static int GetNextMessageBatchSize(string taskKey, IReadOnlyList<string> messages)
@@ -263,48 +278,48 @@ namespace CoreHelpers.TaskLogging
             return string.Format("{0}-{1}", Convert.ToInt64(diff.TotalSeconds), localEntryCounter.ToString("00000000"));
         }
 
-        private async Task AddEntityToTable<T>(string tableName, T entity) where T : ITableEntity
-            => await ExecuteEntityToTableOperation(tableName, (TableClient tc) => tc.AddEntityAsync<T>(entity));
+        private async Task AddEntityToTable<T>(string tableName, T entity, CancellationToken cancellationToken = default) where T : ITableEntity
+            => await ExecuteEntityToTableOperation(tableName, (TableClient tc, CancellationToken token) => tc.AddEntityAsync<T>(entity, token), cancellationToken);
 
-        private async Task UpdateEntityInTable<T>(string tableName, T entity) where T : ITableEntity
-            => await ExecuteEntityToTableOperation(tableName, (TableClient tc) => tc.UpdateEntityAsync<T>(entity, Azure.ETag.All));
+        private async Task UpdateEntityInTable<T>(string tableName, T entity, CancellationToken cancellationToken = default) where T : ITableEntity
+            => await ExecuteEntityToTableOperation(tableName, (TableClient tc, CancellationToken token) => tc.UpdateEntityAsync<T>(entity, Azure.ETag.All, cancellationToken: token), cancellationToken);
 
-        private async Task DeleteEntityByKeys(string tableName, string pKey, string rowKey)
-            => await ExecuteEntityToTableOperation(tableName, (TableClient tc) => tc.DeleteEntityAsync(pKey, rowKey, Azure.ETag.All));
+        private async Task DeleteEntityByKeys(string tableName, string pKey, string rowKey, CancellationToken cancellationToken = default)
+            => await ExecuteEntityToTableOperation(tableName, (TableClient tc, CancellationToken token) => tc.DeleteEntityAsync(pKey, rowKey, Azure.ETag.All, token), cancellationToken);
 
-        private async Task<T[]> QueryEntitiyFromTableByPartitionKey<T>(string tableName, string partitionKey) where T : class, ITableEntity
+        private async Task<T[]> QueryEntitiyFromTableByPartitionKey<T>(string tableName, string partitionKey, CancellationToken cancellationToken = default) where T : class, ITableEntity
         {
             var result = new List<T>();
             
-            await ExecuteEntityToTableOperation(tableName,  async (TableClient tc) =>
+            await ExecuteEntityToTableOperation(tableName, async (TableClient tc, CancellationToken token) =>
             {
-                var entities = tc.QueryAsync<T>(filter: $"PartitionKey eq '{partitionKey}'");
+                var entities = tc.QueryAsync<T>(filter: $"PartitionKey eq '{partitionKey}'", cancellationToken: token);
                 
-                await foreach (var entity in entities)
+                await foreach (var entity in entities.WithCancellation(token))
                     result.Add(entity);
-            });
+            }, cancellationToken);
 
             return result.ToArray();
         }
 
-        private async Task ExecuteEntityToTableOperation(string tableName, Func<TableClient, Task> operation)
+        private async Task ExecuteEntityToTableOperation(string tableName, Func<TableClient, CancellationToken, Task> operation, CancellationToken cancellationToken)
         {
             // get the table client
             var tableClient = _tableServiceClient.GetTableClient(tableName: tableName);
 
-            await ExecuteTableOperation(() => operation(tableClient), () => tableClient.CreateIfNotExistsAsync());
+            await ExecuteTableOperation(token => operation(tableClient, token), token => tableClient.CreateIfNotExistsAsync(token), cancellationToken);
         }
 
-        internal static async Task ExecuteTableOperation(Func<Task> operation, Func<Task> createTable)
+        internal static async Task ExecuteTableOperation(Func<CancellationToken, Task> operation, Func<CancellationToken, Task> createTable, CancellationToken cancellationToken)
         {
             try
             {
-                await operation();
+                await operation(cancellationToken);
             }
             catch (Azure.RequestFailedException e) when (string.Equals(e.ErrorCode, "TableNotFound", StringComparison.Ordinal))
             {
-                await createTable();
-                await operation();
+                await createTable(cancellationToken);
+                await operation(cancellationToken);
             }
         }
     }

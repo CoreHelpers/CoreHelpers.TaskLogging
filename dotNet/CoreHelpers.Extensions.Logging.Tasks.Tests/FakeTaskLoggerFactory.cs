@@ -34,10 +34,19 @@ internal sealed class FakeTaskLoggerFactory : ITaskLoggerFactory
     public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker)
         => Task.FromResult("announced-task");
 
+    public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, CancellationToken cancellationToken)
+        => Task.FromResult("announced-task");
+
     public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData)
         => Task.FromResult("announced-task");
 
+    public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData, CancellationToken cancellationToken)
+        => Task.FromResult("announced-task");
+
     public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped)
+        => Task.FromResult("announced-task");
+
+    public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped, CancellationToken cancellationToken)
         => Task.FromResult("announced-task");
 
     public Task UpdateTaskStatus(string taskId, LoggingTaskStatus taskStatus)
@@ -58,6 +67,12 @@ internal sealed class FakeTaskLoggerFactory : ITaskLoggerFactory
     public Task<string?> LookupTaskIdByExternalId(string externalTaskId)
         => Task.FromResult<string?>(null);
 
+    public Task<string?> LookupTaskIdByExternalId(string externalTaskId, CancellationToken cancellationToken)
+        => Task.FromResult<string?>(null);
+
     public Task RegisterExternlIdForTask(string taskId, string externalTaskId)
+        => Task.CompletedTask;
+
+    public Task RegisterExternlIdForTask(string taskId, string externalTaskId, CancellationToken cancellationToken)
         => Task.CompletedTask;
 }

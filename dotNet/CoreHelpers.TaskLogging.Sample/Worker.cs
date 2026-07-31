@@ -42,13 +42,13 @@ namespace CoreHelpers.TaskLogging.Sample
                 { "class", "Main"}
             };
 
-            var taskId = await _taskLoggerFactory.AnnounceTask("announcejob", "q", "w", metaData).WaitAsync(stoppingToken);
+            var taskId = await _taskLoggerFactory.AnnounceTask("announcejob", "q", "w", metaData, stoppingToken);
 			var externalId = Guid.NewGuid().ToString();
 
-			await _taskLoggerFactory.RegisterExternlIdForTask(taskId, externalId).WaitAsync(stoppingToken);
+			await _taskLoggerFactory.RegisterExternlIdForTask(taskId, externalId, stoppingToken);
             using (_logger.BeginTaskScope(taskId))
             {
-	            var lookedUpTaskId = await _taskLoggerFactory.LookupTaskIdByExternalId(externalId).WaitAsync(stoppingToken);
+	            var lookedUpTaskId = await _taskLoggerFactory.LookupTaskIdByExternalId(externalId, stoppingToken);
 	            if (lookedUpTaskId != taskId)
 		            throw new Exception($"Task with id {lookedUpTaskId} was not found");
 	            

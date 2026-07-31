@@ -30,27 +30,33 @@ public sealed class AzureStorageTableTaskLoggerFactoryTests
     }
 
     [Fact]
-    public async Task ExecuteTableOperation_WhenTableIsMissing_CreatesTableAndRetries()
+    public async Task ExecuteTableOperation_WhenTableIsMissing_CreatesTableAndRetriesWithCancellationToken()
     {
         var operationCalls = 0;
         var createTableCalls = 0;
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var receivedTokens = new List<CancellationToken>();
 
         await AzureStorageTableTaskLoggerFactory.ExecuteTableOperation(
-            () =>
+            cancellationToken =>
             {
+                receivedTokens.Add(cancellationToken);
                 operationCalls++;
                 return operationCalls == 1
                     ? Task.FromException(new RequestFailedException(404, "Missing table", "TableNotFound", null))
                     : Task.CompletedTask;
             },
-            () =>
+            cancellationToken =>
             {
+                receivedTokens.Add(cancellationToken);
                 createTableCalls++;
                 return Task.CompletedTask;
-            });
+            },
+            cancellationTokenSource.Token);
 
         Assert.Equal(2, operationCalls);
         Assert.Equal(1, createTableCalls);
+        Assert.All(receivedTokens, cancellationToken => Assert.Equal(cancellationTokenSource.Token, cancellationToken));
     }
 
     [Fact]
@@ -59,8 +65,9 @@ public sealed class AzureStorageTableTaskLoggerFactoryTests
         var storageException = new RequestFailedException(503, "Storage unavailable", "ServerBusy", null);
 
         var thrownException = await Assert.ThrowsAsync<RequestFailedException>(() => AzureStorageTableTaskLoggerFactory.ExecuteTableOperation(
-            () => Task.FromException(storageException),
-            () => Task.CompletedTask));
+            cancellationToken => Task.FromException(storageException),
+            cancellationToken => Task.CompletedTask,
+            CancellationToken.None));
 
         Assert.Same(storageException, thrownException);
     }
@@ -72,14 +79,15 @@ public sealed class AzureStorageTableTaskLoggerFactoryTests
         var retryException = new RequestFailedException(503, "Storage unavailable", "ServerBusy", null);
 
         var thrownException = await Assert.ThrowsAsync<RequestFailedException>(() => AzureStorageTableTaskLoggerFactory.ExecuteTableOperation(
-            () =>
+            cancellationToken =>
             {
                 operationCalls++;
                 return operationCalls == 1
                     ? Task.FromException(new RequestFailedException(404, "Missing table", "TableNotFound", null))
                     : Task.FromException(retryException);
             },
-            () => Task.CompletedTask));
+            cancellationToken => Task.CompletedTask,
+            CancellationToken.None));
 
         Assert.Same(retryException, thrownException);
         Assert.Equal(2, operationCalls);

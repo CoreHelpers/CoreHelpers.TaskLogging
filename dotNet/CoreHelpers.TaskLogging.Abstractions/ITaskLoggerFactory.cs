@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CoreHelpers.TaskLogging
@@ -33,6 +34,8 @@ namespace CoreHelpers.TaskLogging
         /// <returns></returns>
         Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker);
 
+        Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, CancellationToken cancellationToken);
+
         /// <summary>
         /// Announces a new task in the state pending to the logging framework including required
         /// meta data usable in the frontend. Only announced tasks can be used in a task logger by
@@ -45,6 +48,8 @@ namespace CoreHelpers.TaskLogging
         /// <returns></returns>
         Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData);
 
+        Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData, CancellationToken cancellationToken);
+
         /// <summary>
         /// Announces a new task in the state pending to the logging framework including required
         /// meta data usable in the frontend. Only announced tasks can be used in a task logger by
@@ -56,6 +61,8 @@ namespace CoreHelpers.TaskLogging
         /// <param name="metaDataTyped"></param>
         /// <returns></returns>
         Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped);
+
+        Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped, CancellationToken cancellationToken);
 
         /// <summary>
         /// Update the task status of a given task
@@ -88,6 +95,8 @@ namespace CoreHelpers.TaskLogging
         /// <param name="externalTaskId"></param>
         /// <returns></returns>
         Task<string?> LookupTaskIdByExternalId(string externalTaskId);
+
+        Task<string?> LookupTaskIdByExternalId(string externalTaskId, CancellationToken cancellationToken);
         
         
         /// <summary>
@@ -97,6 +106,7 @@ namespace CoreHelpers.TaskLogging
         /// <param name="externalTaskId"></param>
         /// <returns></returns>
         Task RegisterExternlIdForTask(string taskId, string externalTaskId);
+
+        Task RegisterExternlIdForTask(string taskId, string externalTaskId, CancellationToken cancellationToken);
     }
 }
-
