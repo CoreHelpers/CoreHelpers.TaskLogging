@@ -7,9 +7,15 @@ internal sealed class FakeTaskLoggerFactory : ITaskLoggerFactory
 {
     public List<string[]> MergeCalls { get; } = new();
 
+    public List<(bool Force, string TaskId, string[] Messages)> TaskMergeCalls { get; } = new();
+
     public List<LoggingTaskStatus> StatusUpdates { get; } = new();
 
+    public List<(string TaskId, LoggingTaskStatus Status)> TaskStatusUpdates { get; } = new();
+
     public Action<bool, string[]>? OnMerge { get; set; }
+
+    public Action<bool, string, string[]>? OnTaskMerge { get; set; }
 
     public Exception? MergeException { get; set; }
 
@@ -26,7 +32,9 @@ internal sealed class FakeTaskLoggerFactory : ITaskLoggerFactory
     public Task<string[]> MergePendingMessagesIfNeeded(DateTimeOffset flushTime, bool force, string taskKey, string[] messages)
     {
         MergeCalls.Add(messages.ToArray());
+        TaskMergeCalls.Add((force, taskKey, messages.ToArray()));
         OnMerge?.Invoke(force, messages);
+        OnTaskMerge?.Invoke(force, taskKey, messages);
         var mergeException = GetMergeException?.Invoke(MergeCalls.Count, messages) ?? MergeException;
         if (mergeException != null)
             throw mergeException;
@@ -56,12 +64,14 @@ internal sealed class FakeTaskLoggerFactory : ITaskLoggerFactory
     public Task UpdateTaskStatus(string taskId, LoggingTaskStatus taskStatus)
     {
         StatusUpdates.Add(taskStatus);
+        TaskStatusUpdates.Add((taskId, taskStatus));
         return StatusUpdateException == null ? Task.CompletedTask : Task.FromException(StatusUpdateException);
     }
 
     public Task UpdateTaskStatus(string taskId, LoggingTaskStatus taskStatus, string taskWorker)
     {
         StatusUpdates.Add(taskStatus);
+        TaskStatusUpdates.Add((taskId, taskStatus));
         return Task.CompletedTask;
     }
 

@@ -19,12 +19,12 @@ namespace CoreHelpers.Extensions.Logging.Tasks
             _innerDisposable = innerDisposable;
             
             if (!taskLoggerState.IsTaskAnnounced)
-                _logger.Log(LogLevel.None, new EventId(0, "TaskScopeInitPending"), string.Empty);
+                LogLifecycleEvent("TaskScopeInitPending");
             
-            _logger.Log(LogLevel.None, new EventId(0, "TaskScopeStarted"),string.Empty);
+            LogLifecycleEvent("TaskScopeStarted");
             
             _flushTimer = new Timer((state) => {
-                _logger.Log(LogLevel.None, new EventId(0, "TaskScopeFlushRequired"), string.Empty);
+                LogLifecycleEvent("TaskScopeFlushRequired");
             }, null, taskLoggerState.CacheTimeSpan, taskLoggerState.CacheTimeSpan);
         }
         public void Dispose()
@@ -32,7 +32,7 @@ namespace CoreHelpers.Extensions.Logging.Tasks
             _flushTimer.Dispose();
             try
             {
-                _logger.Log(LogLevel.None, new EventId(0, "TaskScopeDisposed"), string.Empty);
+                LogLifecycleEvent("TaskScopeDisposed");
             }
             finally
             {
@@ -44,5 +44,8 @@ namespace CoreHelpers.Extensions.Logging.Tasks
         public string TaskType => _taskLoggerState.TaskType;
         public string TaskSource => _taskLoggerState.TaskSource;
         public string TaskWorker => _taskLoggerState.TaskWorker;
+
+        private void LogLifecycleEvent(string eventName)
+            => _logger.Log(LogLevel.None, new EventId(0, eventName), _taskLoggerState, null, (state, exception) => string.Empty);
     }
 }

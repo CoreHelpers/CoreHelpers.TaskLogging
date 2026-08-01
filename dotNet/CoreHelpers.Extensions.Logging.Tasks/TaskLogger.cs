@@ -28,12 +28,16 @@ namespace CoreHelpers.Extensions.Logging.Tasks
             if (!IsEnabled(logLevel))
                 return;
             
-            // collect ITaskLoggerTypedScope from the scope provider
-            var scopes = new List<object>();
-            _scopeProvider.ForEachScope((scope, list) => list.Add(scope), scopes);
+            // Lifecycle events carry their originating state so timers and disposal always
+            // affect the scope that raised the event. Regular logs use the innermost scope.
+            var taskLoggerState = IsLifecycleEvent(eventId) && state is TaskLoggerState lifecycleState ? lifecycleState : null;
+            if (taskLoggerState == null)
+            {
+                var scopes = new List<object?>();
+                _scopeProvider.ForEachScope((scope, list) => list.Add(scope), scopes);
+                taskLoggerState = scopes.LastOrDefault(scope => scope is TaskLoggerState) as TaskLoggerState;
+            }
 
-            // filter for the task logger scope, if not in the list nothing todo
-            var taskLoggerState = scopes.FirstOrDefault(scope => scope is TaskLoggerState typed) as TaskLoggerState;
             if (taskLoggerState == null)
                 return;
             
@@ -177,6 +181,9 @@ namespace CoreHelpers.Extensions.Logging.Tasks
 
         public bool IsEnabled(LogLevel logLevel)
             => true;
+
+        private static bool IsLifecycleEvent(EventId eventId)
+            => eventId.Id == 0 && (eventId.Name == "TaskScopeInitPending" || eventId.Name == "TaskScopeStarted" || eventId.Name == "TaskScopeFlushRequired" || eventId.Name == "TaskScopeDisposed");
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull
         {
