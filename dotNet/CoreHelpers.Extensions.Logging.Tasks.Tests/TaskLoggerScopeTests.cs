@@ -158,6 +158,53 @@ public sealed class TaskLoggerScopeTests
     }
 
     [Fact]
+    public void ExplicitChildStatus_IsPreservedWithoutChangingParentStatus()
+    {
+        var factory = CreatePersistingFactory();
+        using var services = CreateServices(factory);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("ExplicitChildStatus");
+        var parent = Assert.IsAssignableFrom<ITaskLoggerScope>(logger.BeginTaskScope("parent", TimeSpan.FromHours(1)));
+        var child = Assert.IsAssignableFrom<ITaskLoggerScope>(logger.BeginTaskScope("child", TimeSpan.FromHours(1)));
+
+        child.SetStatus(CoreHelpers.TaskLogging.TaskStatus.Failed);
+        child.Dispose();
+
+        Assert.Contains(("child", CoreHelpers.TaskLogging.TaskStatus.Failed), factory.TaskStatusUpdates);
+        Assert.DoesNotContain(("parent", CoreHelpers.TaskLogging.TaskStatus.Failed), factory.TaskStatusUpdates);
+        Assert.DoesNotContain(("parent", CoreHelpers.TaskLogging.TaskStatus.Succeed), factory.TaskStatusUpdates);
+        parent.Dispose();
+        Assert.Contains(("parent", CoreHelpers.TaskLogging.TaskStatus.Succeed), factory.TaskStatusUpdates);
+    }
+
+    [Fact]
+    public void ExplicitSucceedStatus_OverridesAutomaticFailureStatus()
+    {
+        var factory = CreatePersistingFactory();
+        using var services = CreateServices(factory);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("ExplicitSucceedStatus");
+        var scope = Assert.IsAssignableFrom<ITaskLoggerScope>(logger.BeginTaskScope("task", TimeSpan.FromHours(1)));
+
+        logger.LogError(new InvalidOperationException("handled failure"), "handled");
+        scope.SetStatus(CoreHelpers.TaskLogging.TaskStatus.Succeed);
+        scope.Dispose();
+
+        Assert.Equal(CoreHelpers.TaskLogging.TaskStatus.Succeed, factory.TaskStatusUpdates.Last().Status);
+    }
+
+    [Theory]
+    [InlineData(CoreHelpers.TaskLogging.TaskStatus.Pending)]
+    [InlineData(CoreHelpers.TaskLogging.TaskStatus.Running)]
+    public void SetStatus_RejectsNonTerminalStatus(CoreHelpers.TaskLogging.TaskStatus status)
+    {
+        var factory = CreatePersistingFactory();
+        using var services = CreateServices(factory);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("InvalidExplicitStatus");
+        using var scope = Assert.IsAssignableFrom<ITaskLoggerScope>(logger.BeginTaskScope("task", TimeSpan.FromHours(1)));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => scope.SetStatus(status));
+    }
+
+    [Fact]
     public void FailedChildInitialization_RestoresParentScope()
     {
         var factory = CreatePersistingFactory();

@@ -45,6 +45,15 @@ namespace CoreHelpers.Extensions.Logging.Tasks
         public string TaskSource => _taskLoggerState.TaskSource;
         public string TaskWorker => _taskLoggerState.TaskWorker;
 
+        public void SetStatus(TaskStatus status)
+        {
+            if (status != TaskStatus.Succeed && status != TaskStatus.Failed)
+                throw new ArgumentOutOfRangeException(nameof(status), status, "Only Succeed and Failed are valid task completion states.");
+
+            lock (_taskLoggerState.PendingMessagesSyncRoot)
+                _taskLoggerState.CompletionStatus = status;
+        }
+
         private void LogLifecycleEvent(string eventName)
             => _logger.Log(LogLevel.None, new EventId(0, eventName), _taskLoggerState, null, (state, exception) => string.Empty);
     }

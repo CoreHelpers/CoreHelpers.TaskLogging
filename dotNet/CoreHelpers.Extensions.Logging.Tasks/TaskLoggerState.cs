@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using CoreHelpers.TaskLogging;
 
 namespace CoreHelpers.Extensions.Logging.Tasks
 {
@@ -14,6 +15,7 @@ namespace CoreHelpers.Extensions.Logging.Tasks
 		public string MetaData { get; set; } = string.Empty;
 		public bool IsTaskAnnounced { get; set; } = false;
 		public bool LastLogWasAnError { get; set; } = false;
+		public TaskStatus? CompletionStatus { get; set; }
 
 		public readonly object PendingMessagesSyncRoot = new object();
 		public List<string> PendingMessages = new List<string>();

@@ -8,5 +8,7 @@ namespace CoreHelpers.TaskLogging
         string TaskType { get; }
         string TaskSource { get; }
         string TaskWorker { get; }
+
+        void SetStatus(TaskStatus status);
     }
 }

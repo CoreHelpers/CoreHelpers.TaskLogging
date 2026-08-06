@@ -82,7 +82,8 @@ namespace CoreHelpers.Extensions.Logging.Tasks
                     MergePendingMessages(taskLoggerState, true, true);
                     
                     // ensure the task is finished now                
-                    _taskLoggerFactory.UpdateTaskStatus(taskLoggerState.TaskId, taskLoggerState.LastLogWasAnError ? TaskStatus.Failed : TaskStatus.Succeed).GetAwaiter().GetResult();
+                    var completionStatus = taskLoggerState.CompletionStatus ?? (taskLoggerState.LastLogWasAnError ? TaskStatus.Failed : TaskStatus.Succeed);
+                    _taskLoggerFactory.UpdateTaskStatus(taskLoggerState.TaskId, completionStatus).GetAwaiter().GetResult();
                 }
                 // check if we need to flush the messages
                 else if (eventId is { Id: 0, Name: "TaskScopeFlushRequired" })
