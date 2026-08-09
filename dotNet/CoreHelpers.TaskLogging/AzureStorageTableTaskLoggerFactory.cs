@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Data.Tables;
 using Microsoft.Extensions.DependencyInjection;
-using Newtonsoft.Json;
 
 namespace CoreHelpers.TaskLogging
 {
@@ -19,6 +20,8 @@ namespace CoreHelpers.TaskLogging
         private readonly int _cacheLimit;
         private readonly TimeSpan _cacheTimespan;
         private readonly string _environmentPrefix;
+        private readonly object _pendingMetadataSyncRoot = new object();
+        private readonly Dictionary<string, JsonObject> _pendingMetadata = new Dictionary<string, JsonObject>();
         private readonly TableServiceClient _tableServiceClient;
         private long _messageTimeStampCounter = 0;
 
@@ -31,16 +34,19 @@ namespace CoreHelpers.TaskLogging
         }
 
         public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker)
-            => AnnounceTask(taskType, taskSource, taskWorker, string.Empty, CancellationToken.None);
+            => AnnounceTask(taskType, taskSource, taskWorker, new JsonObject(), CancellationToken.None);
 
         public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, CancellationToken cancellationToken)
-            => AnnounceTask(taskType, taskSource, taskWorker, string.Empty, cancellationToken);
+            => AnnounceTask(taskType, taskSource, taskWorker, new JsonObject(), cancellationToken);
 
-        public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData)
-            => AnnounceTask(taskType, taskSource, taskWorker, metaData, CancellationToken.None);
+        public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, JsonObject metadata)
+            => AnnounceTask(taskType, taskSource, taskWorker, metadata, CancellationToken.None);
 
-        public async Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData, CancellationToken cancellationToken)
+        public async Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, JsonObject metadata, CancellationToken cancellationToken)
         {
+            if (metadata == null)
+                throw new ArgumentNullException(nameof(metadata));
+
             // define the refDate
             var refDate = DateTime.UtcNow;
 
@@ -57,7 +63,7 @@ namespace CoreHelpers.TaskLogging
                 TaskType = taskType,
                 TaskSource = taskSource,
                 TaskWorker = taskWorker,
-                TaskData = String.IsNullOrEmpty(metaData) ? string.Empty : metaData
+                TaskData = metadata.ToJsonString()
             };
 
             // get the table name
@@ -70,11 +76,28 @@ namespace CoreHelpers.TaskLogging
             return taskKey;
         }
 
-        public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped)
-            => AnnounceTask(taskType, taskSource, taskWorker, metaDataTyped, CancellationToken.None);
+        public Task MergeTaskMetadata(string taskId, JsonObject metadata)
+        {
+            if (metadata == null)
+                throw new ArgumentNullException(nameof(metadata));
 
-        public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped, CancellationToken cancellationToken)
-            => AnnounceTask(taskType, taskSource, taskWorker, JsonConvert.SerializeObject(metaDataTyped), cancellationToken);
+            if (metadata.Count == 0)
+                return Task.CompletedTask;
+
+            lock (_pendingMetadataSyncRoot)
+            {
+                if (!_pendingMetadata.TryGetValue(taskId, out var pendingMetadata))
+                {
+                    pendingMetadata = new JsonObject();
+                    _pendingMetadata[taskId] = pendingMetadata;
+                }
+
+                foreach (var property in metadata)
+                    pendingMetadata[property.Key] = property.Value?.DeepClone();
+            }
+
+            return Task.CompletedTask;
+        }
         
         public async Task UpdateTaskStatus(string taskKey, TaskStatus taskStatus)
         {            
@@ -105,7 +128,8 @@ namespace CoreHelpers.TaskLogging
             var tableName = GetTaskTable(taskKey);
 
             // update the entity
-            await UpdateEntityInTable<AzureTableTaskEntity>(tableName, taskEntity);
+            var persistedMetadata = await UpdateTaskEntityInTable(tableName, taskEntity);
+            RemovePersistedMetadata(taskKey, persistedMetadata);
 
             // handle the running status
             if (taskStatus == TaskStatus.Running)
@@ -122,21 +146,113 @@ namespace CoreHelpers.TaskLogging
             }
         }
 
+        private JsonObject GetPendingMetadataSnapshot(string taskId)
+        {
+            lock (_pendingMetadataSyncRoot)
+            {
+                return _pendingMetadata.TryGetValue(taskId, out var metadata)
+                    ? (JsonObject)metadata.DeepClone()
+                    : new JsonObject();
+            }
+        }
+
+        private void RemovePersistedMetadata(string taskId, JsonObject persistedMetadata)
+        {
+            if (persistedMetadata.Count == 0)
+                return;
+
+            lock (_pendingMetadataSyncRoot)
+            {
+                if (!_pendingMetadata.TryGetValue(taskId, out var pendingMetadata))
+                    return;
+
+                foreach (var property in persistedMetadata)
+                {
+                    if (pendingMetadata.TryGetPropertyValue(property.Key, out var value) && JsonNode.DeepEquals(value, property.Value))
+                        pendingMetadata.Remove(property.Key);
+                }
+
+                if (pendingMetadata.Count == 0)
+                    _pendingMetadata.Remove(taskId);
+            }
+        }
+
+        private async Task<JsonObject> UpdateTaskEntityInTable(string tableName, AzureTableTaskEntity taskEntity)
+        {
+            const int maximumAttempts = 10;
+
+            for (var attempt = 1; attempt <= maximumAttempts; attempt++)
+            {
+                var pendingMetadata = GetPendingMetadataSnapshot(taskEntity.PartitionKey);
+                var currentEntity = await GetTaskEntityFromTable(tableName, taskEntity.PartitionKey, taskEntity.RowKey);
+                var updateEntity = new TableEntity(taskEntity.PartitionKey, taskEntity.RowKey)
+                {
+                    [nameof(AzureTableTaskEntity.TaskState)] = taskEntity.TaskState
+                };
+
+                if (!string.IsNullOrEmpty(taskEntity.TaskWorker))
+                    updateEntity[nameof(AzureTableTaskEntity.TaskWorker)] = taskEntity.TaskWorker;
+                if (taskEntity.TaskStartDate.HasValue)
+                    updateEntity[nameof(AzureTableTaskEntity.TaskStartDate)] = taskEntity.TaskStartDate.Value;
+                if (taskEntity.TaskEndDate.HasValue)
+                    updateEntity[nameof(AzureTableTaskEntity.TaskEndDate)] = taskEntity.TaskEndDate.Value;
+
+                if (pendingMetadata.Count > 0)
+                {
+                    var metadata = DeserializeMetadata(currentEntity.TaskData);
+                    foreach (var property in pendingMetadata)
+                        metadata[property.Key] = property.Value?.DeepClone();
+                    updateEntity[nameof(AzureTableTaskEntity.TaskData)] = metadata.ToJsonString();
+                }
+
+                try
+                {
+                    await UpdateTaskEntityPropertiesInTable(tableName, updateEntity, currentEntity.ETag);
+                    return pendingMetadata;
+                }
+                catch (Azure.RequestFailedException exception) when (exception.Status == 412)
+                {
+                    if (attempt == maximumAttempts)
+                        throw;
+                }
+            }
+
+            throw new InvalidOperationException("The task update retry loop completed unexpectedly.");
+        }
+
+        private static JsonObject DeserializeMetadata(string? metadataJson)
+        {
+            if (string.IsNullOrEmpty(metadataJson))
+                return new JsonObject();
+
+            return JsonNode.Parse(metadataJson) as JsonObject ?? throw new JsonException("Task metadata must be a JSON object.");
+        }
+
         public async Task UpdateTaskWorker(string taskId, string taskWorker)
         {
-            // build the task entity
-            var taskEntity = new AzureTableTaskEntity()
-            {
-                PartitionKey = taskId,
-                RowKey = taskId, 
-                TaskWorker = taskWorker
-            };
-            
             // get the table name
             var tableName = GetTaskTable(taskId);
 
-            // update the entity
-            await UpdateEntityInTable<AzureTableTaskEntity>(tableName, taskEntity);
+            const int maximumAttempts = 10;
+            for (var attempt = 1; attempt <= maximumAttempts; attempt++)
+            {
+                var currentEntity = await GetTaskEntityFromTable(tableName, taskId, taskId);
+                var updateEntity = new TableEntity(taskId, taskId)
+                {
+                    [nameof(AzureTableTaskEntity.TaskWorker)] = taskWorker
+                };
+
+                try
+                {
+                    await UpdateTaskEntityPropertiesInTable(tableName, updateEntity, currentEntity.ETag);
+                    return;
+                }
+                catch (Azure.RequestFailedException exception) when (exception.Status == 412)
+                {
+                    if (attempt == maximumAttempts)
+                        throw;
+                }
+            }
         }
 
         public Task<string?> LookupTaskIdByExternalId(string externalTaskId)
@@ -284,8 +400,18 @@ namespace CoreHelpers.TaskLogging
         protected virtual async Task AddEntityToTable<T>(string tableName, T entity, CancellationToken cancellationToken = default) where T : ITableEntity
             => await ExecuteEntityToTableOperation(tableName, (TableClient tc, CancellationToken token) => tc.AddEntityAsync<T>(entity, token), cancellationToken);
 
-        protected virtual async Task UpdateEntityInTable<T>(string tableName, T entity, CancellationToken cancellationToken = default) where T : ITableEntity
-            => await ExecuteEntityToTableOperation(tableName, (TableClient tc, CancellationToken token) => tc.UpdateEntityAsync<T>(entity, Azure.ETag.All, cancellationToken: token), cancellationToken);
+        protected virtual async Task<AzureTableTaskEntity> GetTaskEntityFromTable(string tableName, string partitionKey, string rowKey, CancellationToken cancellationToken = default)
+        {
+            AzureTableTaskEntity? result = null;
+            await ExecuteEntityToTableOperation(tableName, async (TableClient tableClient, CancellationToken token) =>
+            {
+                result = (await tableClient.GetEntityAsync<AzureTableTaskEntity>(partitionKey, rowKey, cancellationToken: token)).Value;
+            }, cancellationToken);
+            return result!;
+        }
+
+        protected virtual async Task UpdateTaskEntityPropertiesInTable(string tableName, TableEntity entity, Azure.ETag etag, CancellationToken cancellationToken = default)
+            => await ExecuteEntityToTableOperation(tableName, (TableClient tableClient, CancellationToken token) => tableClient.UpdateEntityAsync(entity, etag, TableUpdateMode.Merge, token), cancellationToken);
 
         protected virtual async Task DeleteEntityByKeys(string tableName, string pKey, string rowKey, CancellationToken cancellationToken = default)
             => await ExecuteEntityToTableOperation(tableName, (TableClient tc, CancellationToken token) => tc.DeleteEntityAsync(pKey, rowKey, Azure.ETag.All, token), cancellationToken);

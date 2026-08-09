@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json.Nodes;
 
 namespace CoreHelpers.TaskLogging
 {
@@ -8,6 +9,8 @@ namespace CoreHelpers.TaskLogging
         string TaskType { get; }
         string TaskSource { get; }
         string TaskWorker { get; }
+
+        void MergeTaskMetadata(JsonObject metadata);
 
         void SetStatus(TaskStatus status);
     }

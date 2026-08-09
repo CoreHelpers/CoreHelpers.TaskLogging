@@ -1,7 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json.Nodes;
 
 namespace CoreHelpers.TaskLogging
 {
@@ -37,32 +37,25 @@ namespace CoreHelpers.TaskLogging
         Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, CancellationToken cancellationToken);
 
         /// <summary>
-        /// Announces a new task in the state pending to the logging framework including required
-        /// meta data usable in the frontend. Only announced tasks can be used in a task logger by
-        /// calling CreateTaskLogger
+        /// Announces a new task with structured JSON metadata.
         /// </summary>
         /// <param name="taskType"></param>
         /// <param name="taskSource"></param>
         /// <param name="taskWorker"></param>
-        /// <param name="metaData"></param>
+        /// <param name="metadata"></param>
         /// <returns></returns>
-        Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData);
+        Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, JsonObject metadata);
 
-        Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData, CancellationToken cancellationToken);
+        Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, JsonObject metadata, CancellationToken cancellationToken);
 
         /// <summary>
-        /// Announces a new task in the state pending to the logging framework including required
-        /// meta data usable in the frontend. Only announced tasks can be used in a task logger by
-        /// calling CreateTaskLogger
+        /// Merges metadata into a task. Values are buffered until the next task status update.
+        /// Existing keys are overwritten by newer values.
         /// </summary>
-        /// <param name="taskType"></param>
-        /// <param name="taskSource"></param>
-        /// <param name="taskWorker"></param>
-        /// <param name="metaDataTyped"></param>
+        /// <param name="taskId"></param>
+        /// <param name="metadata"></param>
         /// <returns></returns>
-        Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped);
-
-        Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped, CancellationToken cancellationToken);
+        Task MergeTaskMetadata(string taskId, JsonObject metadata);
 
         /// <summary>
         /// Update the task status of a given task

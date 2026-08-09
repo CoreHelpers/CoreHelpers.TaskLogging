@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using CoreHelpers.TaskLogging;
+using System.Text.Json.Nodes;
 
 namespace CoreHelpers.Extensions.Logging.Tasks
 {
@@ -12,7 +13,8 @@ namespace CoreHelpers.Extensions.Logging.Tasks
 		public string TaskSource { get; set; } = string.Empty;
 		public string TaskWorker { get; set; } = string.Empty;
 
-		public string MetaData { get; set; } = string.Empty;
+		public JsonObject Metadata { get; set; } = new JsonObject();
+		public JsonObject PendingMetadata { get; } = new JsonObject();
 		public bool IsTaskAnnounced { get; set; } = false;
 		public bool LastLogWasAnError { get; set; } = false;
 		public TaskStatus? CompletionStatus { get; set; }

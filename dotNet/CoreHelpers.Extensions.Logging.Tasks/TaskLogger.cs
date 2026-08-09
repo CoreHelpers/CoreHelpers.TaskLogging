@@ -47,18 +47,9 @@ namespace CoreHelpers.Extensions.Logging.Tasks
                 if (taskLoggerState.IsTaskAnnounced && !string.IsNullOrEmpty(taskLoggerState.TaskId))
                     return;
 
-                if (String.IsNullOrEmpty(taskLoggerState.MetaData))
-                {
-                    taskLoggerState.TaskId = _taskLoggerFactory
-                        .AnnounceTask(taskLoggerState.TaskType, taskLoggerState.TaskSource, taskLoggerState.TaskWorker).GetAwaiter()
-                        .GetResult();
-                }
-                else
-                {
-                    taskLoggerState.TaskId = _taskLoggerFactory
-                        .AnnounceTask(taskLoggerState.TaskType, taskLoggerState.TaskSource, taskLoggerState.TaskWorker, taskLoggerState.MetaData).GetAwaiter()
-                        .GetResult();
-                }
+                taskLoggerState.TaskId = _taskLoggerFactory
+                    .AnnounceTask(taskLoggerState.TaskType, taskLoggerState.TaskSource, taskLoggerState.TaskWorker, taskLoggerState.Metadata).GetAwaiter()
+                    .GetResult();
 
                 taskLoggerState.IsTaskAnnounced = true;
                 
@@ -80,6 +71,12 @@ namespace CoreHelpers.Extensions.Logging.Tasks
                 {
                     // at this point we need to flush if needed
                     MergePendingMessages(taskLoggerState, true, true);
+
+                    if (taskLoggerState.PendingMetadata.Count > 0)
+                    {
+                        _taskLoggerFactory.MergeTaskMetadata(taskLoggerState.TaskId, taskLoggerState.PendingMetadata).GetAwaiter().GetResult();
+                        taskLoggerState.PendingMetadata.Clear();
+                    }
                     
                     // ensure the task is finished now                
                     var completionStatus = taskLoggerState.CompletionStatus ?? (taskLoggerState.LastLogWasAnError ? TaskStatus.Failed : TaskStatus.Succeed);

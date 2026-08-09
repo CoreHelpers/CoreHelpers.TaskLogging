@@ -38,11 +38,69 @@ builder.Services.AddTaskLoggerForAzureStorageTable(
 Use task scopes through `ILogger`:
 
 ```csharp
-using (_logger.BeginNewTaskScope("ImportJob", "Queue", "Worker-1"))
+var metadata = new JsonObject
+{
+    ["tenant"] = "north",
+    ["file"] = "customers.csv",
+    ["pageSize"] = 100000,
+    ["cleanUpData"] = true
+};
+
+using (_logger.BeginNewTaskScope("ImportJob", "Queue", "Worker-1", metadata))
 {
     _logger.LogInformation("Processing started");
 }
 ```
+
+Metadata is exposed as `JsonObject` from `System.Text.Json.Nodes` and is stored as JSON in the Azure Table `TaskData` property. JSON value types, arrays, and nested objects are preserved. Use the overload without metadata when a task has none:
+
+```csharp
+var taskId = await taskLoggerFactory.AnnounceTask(
+    "ImportJob",
+    "Queue",
+    "Worker-1");
+```
+
+### Updating Metadata
+
+Metadata updates are buffered and persisted together with the next task status update. New values are merged into the stored JSON object; an existing key is overwritten:
+
+```csharp
+await taskLoggerFactory.MergeTaskMetadata(taskId, new JsonObject
+{
+    ["progress"] = 50,
+    ["file"] = "customers-v2.csv"
+});
+
+await taskLoggerFactory.UpdateTaskStatus(taskId, TaskStatus.Running);
+```
+
+Task scopes provide the same deferred behavior. Disposal persists the metadata together with the completion status:
+
+```csharp
+using var scope = _logger.BeginTaskScope(taskId);
+scope?.MergeTaskMetadata(new JsonObject
+{
+    ["records"] = 1200
+});
+```
+
+Azure Table updates use optimistic ETag concurrency and partial entity updates. Concurrent metadata changes are re-read and merged without replacing unrelated task fields.
+
+### Migrating from 0.x Metadata APIs
+
+String and dictionary overloads were removed in 0.5.0. Parse existing JSON strings into a `JsonObject`:
+
+```csharp
+// 0.x
+await taskLoggerFactory.AnnounceTask("ImportJob", "Queue", "Worker-1", "{\"tenant\":\"north\"}");
+
+// 0.5
+var metadata = JsonNode.Parse("{\"tenant\":\"north\"}")!.AsObject();
+await taskLoggerFactory.AnnounceTask("ImportJob", "Queue", "Worker-1", metadata);
+```
+
+`AnnounceTask` is available with or without metadata and with or without a `CancellationToken`. Structured metadata must be supplied as a `JsonObject`.
 
 ## Maintenance Cleanup
 

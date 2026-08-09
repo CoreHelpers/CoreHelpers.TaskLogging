@@ -1,5 +1,6 @@
 using Azure;
 using Azure.Data.Tables;
+using System.Text.Json.Nodes;
 using Xunit;
 
 namespace CoreHelpers.TaskLogging.Tests;
@@ -74,6 +75,109 @@ public sealed class AzureStorageTableTaskLoggerFactoryTests
         Assert.Equal(
             new[] { ("Add", AzureStorageTableTaskLoggerFactory.GetTimePartitionedTableName("Dev", "Tasks", taskKey)) },
             factory.Operations);
+    }
+
+    [Fact]
+    public async Task AnnounceTask_PreservesStructuredJsonMetadata()
+    {
+        var factory = new CapturingAzureStorageTableTaskLoggerFactory();
+
+        await factory.AnnounceTask("type", "source", "worker", new JsonObject
+        {
+            ["tenant"] = "north",
+            ["enabled"] = true,
+            ["pageSize"] = 100000,
+            ["options"] = new JsonObject { ["mode"] = "full" }
+        });
+
+        var metadata = JsonNode.Parse(factory.LastAddedTask!.TaskData)!.AsObject();
+        Assert.Equal("north", metadata["tenant"]!.GetValue<string>());
+        Assert.True(metadata["enabled"]!.GetValue<bool>());
+        Assert.Equal(100000, metadata["pageSize"]!.GetValue<int>());
+        Assert.Equal("full", metadata["options"]!["mode"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task AnnounceTask_SerializesEmptyMetadataAsJsonObject()
+    {
+        var factory = new CapturingAzureStorageTableTaskLoggerFactory();
+
+        await factory.AnnounceTask("type", "source", "worker");
+
+        Assert.Equal("{}", factory.LastAddedTask!.TaskData);
+    }
+
+    [Fact]
+    public async Task AnnounceTask_PropagatesCancellationTokenToAzureTableWrite()
+    {
+        var factory = new CapturingAzureStorageTableTaskLoggerFactory();
+        using var cancellationTokenSource = new CancellationTokenSource();
+
+        await factory.AnnounceTask("type", "source", "worker", cancellationTokenSource.Token);
+
+        Assert.Equal(cancellationTokenSource.Token, factory.LastAddCancellationToken);
+    }
+
+    [Fact]
+    public async Task MergeTaskMetadata_IsPersistedWithNextStatusUpdateAndOverwritesExistingKeys()
+    {
+        var factory = new InMemoryAzureStorageTableTaskLoggerFactory(new JsonObject { ["existing"] = true, ["state"] = "old", ["nested"] = new JsonObject { ["count"] = 2 } });
+
+        await factory.MergeTaskMetadata(factory.TaskId, new JsonObject { ["state"] = "new", ["added"] = 42 });
+
+        Assert.Equal(0, factory.UpdateCount);
+
+        await factory.UpdateTaskStatus(factory.TaskId, TaskStatus.Running);
+
+        Assert.True(factory.Metadata["existing"]!.GetValue<bool>());
+        Assert.Equal("new", factory.Metadata["state"]!.GetValue<string>());
+        Assert.Equal(42, factory.Metadata["added"]!.GetValue<int>());
+        Assert.Equal(2, factory.Metadata["nested"]!["count"]!.GetValue<int>());
+        Assert.Equal(TaskStatus.Running.ToString(), factory.TaskState);
+    }
+
+    [Fact]
+    public async Task MergeTaskMetadata_WithEmptyMetadata_DoesNotChangeStoredMetadata()
+    {
+        var factory = new InMemoryAzureStorageTableTaskLoggerFactory(new JsonObject { ["existing"] = "value" });
+
+        await factory.MergeTaskMetadata(factory.TaskId, new JsonObject());
+        await factory.UpdateTaskStatus(factory.TaskId, TaskStatus.Pending);
+
+        Assert.True(JsonNode.DeepEquals(new JsonObject { ["existing"] = "value" }, factory.Metadata));
+    }
+
+    [Fact]
+    public async Task UpdateTaskWorker_UsesAnEtagProtectedPartialUpdate()
+    {
+        var factory = new CapturingAzureStorageTableTaskLoggerFactory();
+        var taskKey = AzureTableTimebasedKeyBuilder.BuildDateTimeBasedRowKey(DateTimeOffset.UtcNow, Guid.NewGuid().ToString());
+
+        await factory.UpdateTaskWorker(taskKey, "new-worker");
+
+        Assert.Equal(new ETag("\"1\""), factory.LastUpdateEtag);
+        Assert.Equal("new-worker", factory.LastUpdatedEntity![nameof(AzureTableTaskEntity.TaskWorker)]);
+        Assert.False(factory.LastUpdatedEntity.ContainsKey(nameof(AzureTableTaskEntity.TaskState)));
+        Assert.False(factory.LastUpdatedEntity.ContainsKey(nameof(AzureTableTaskEntity.TaskData)));
+    }
+
+    [Fact]
+    public async Task ParallelMetadataUpdates_DoNotLetAnOlderSnapshotOverwriteNewerValues()
+    {
+        var factory = new InMemoryAzureStorageTableTaskLoggerFactory(new JsonObject(), blockFirstUpdate: true);
+        await factory.MergeTaskMetadata(factory.TaskId, new JsonObject { ["state"] = "old", ["first"] = "value" });
+        var firstUpdate = factory.UpdateTaskStatus(factory.TaskId, TaskStatus.Pending);
+        await factory.FirstUpdateWaiting;
+
+        await factory.MergeTaskMetadata(factory.TaskId, new JsonObject { ["state"] = "new", ["second"] = "value" });
+        await factory.UpdateTaskStatus(factory.TaskId, TaskStatus.Pending);
+        factory.ReleaseFirstUpdate();
+        await firstUpdate;
+
+        Assert.Equal("new", factory.Metadata["state"]!.GetValue<string>());
+        Assert.Equal("value", factory.Metadata["first"]!.GetValue<string>());
+        Assert.Equal("value", factory.Metadata["second"]!.GetValue<string>());
+        Assert.Equal(1, factory.ConflictCount);
     }
 
     [Fact]
@@ -173,15 +277,27 @@ public sealed class AzureStorageTableTaskLoggerFactoryTests
 
         public List<(string Operation, string TableName)> Operations { get; } = new();
 
+        public AzureTableTaskEntity? LastAddedTask { get; private set; }
+        public CancellationToken LastAddCancellationToken { get; private set; }
+        public TableEntity? LastUpdatedEntity { get; private set; }
+        public ETag? LastUpdateEtag { get; private set; }
+
         protected override Task AddEntityToTable<T>(string tableName, T entity, CancellationToken cancellationToken = default)
         {
             Operations.Add(("Add", tableName));
+            LastAddedTask = entity as AzureTableTaskEntity ?? LastAddedTask;
+            LastAddCancellationToken = cancellationToken;
             return Task.CompletedTask;
         }
 
-        protected override Task UpdateEntityInTable<T>(string tableName, T entity, CancellationToken cancellationToken = default)
+        protected override Task<AzureTableTaskEntity> GetTaskEntityFromTable(string tableName, string partitionKey, string rowKey, CancellationToken cancellationToken = default)
+            => Task.FromResult(new AzureTableTaskEntity { PartitionKey = partitionKey, RowKey = rowKey, ETag = new ETag("\"1\""), TaskData = "{}" });
+
+        protected override Task UpdateTaskEntityPropertiesInTable(string tableName, TableEntity entity, ETag etag, CancellationToken cancellationToken = default)
         {
             Operations.Add(("Update", tableName));
+            LastUpdatedEntity = entity;
+            LastUpdateEtag = etag;
             return Task.CompletedTask;
         }
 
@@ -196,5 +312,110 @@ public sealed class AzureStorageTableTaskLoggerFactoryTests
             Operations.Add(("Transaction", tableName));
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class InMemoryAzureStorageTableTaskLoggerFactory : AzureStorageTableTaskLoggerFactory
+    {
+        private readonly object _syncRoot = new();
+        private readonly TaskCompletionSource<bool>? _continueFirstUpdate;
+        private readonly TaskCompletionSource<bool>? _firstUpdateWaiting;
+        private AzureTableTaskEntity _entity;
+        private int _etagVersion = 1;
+        private int _updateAttemptCount;
+
+        public InMemoryAzureStorageTableTaskLoggerFactory(JsonObject metadata, bool blockFirstUpdate = false)
+            : base("UseDevelopmentStorage=true", "Dev", 100, TimeSpan.FromMinutes(5))
+        {
+            if (blockFirstUpdate)
+            {
+                _continueFirstUpdate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                _firstUpdateWaiting = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+
+            TaskId = AzureTableTimebasedKeyBuilder.BuildDateTimeBasedRowKey(DateTimeOffset.UtcNow, Guid.NewGuid().ToString());
+            _entity = new AzureTableTaskEntity
+            {
+                PartitionKey = TaskId,
+                RowKey = TaskId,
+                ETag = BuildEtag(),
+                TaskState = TaskStatus.Pending.ToString(),
+                TaskData = metadata.ToJsonString()
+            };
+        }
+
+        public string TaskId { get; }
+        public int ConflictCount { get; private set; }
+        public int UpdateCount { get; private set; }
+        public Task FirstUpdateWaiting => _firstUpdateWaiting?.Task ?? Task.CompletedTask;
+
+        public void ReleaseFirstUpdate()
+            => _continueFirstUpdate?.SetResult(true);
+
+        public JsonObject Metadata
+        {
+            get
+            {
+                lock (_syncRoot)
+                    return JsonNode.Parse(_entity.TaskData)!.AsObject();
+            }
+        }
+
+        public string TaskState
+        {
+            get
+            {
+                lock (_syncRoot)
+                    return _entity.TaskState;
+            }
+        }
+
+        protected override async Task<AzureTableTaskEntity> GetTaskEntityFromTable(string tableName, string partitionKey, string rowKey, CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            lock (_syncRoot)
+            {
+                return new AzureTableTaskEntity
+                {
+                    PartitionKey = _entity.PartitionKey,
+                    RowKey = _entity.RowKey,
+                    ETag = _entity.ETag,
+                    TaskState = _entity.TaskState,
+                    TaskData = _entity.TaskData
+                };
+            }
+        }
+
+        protected override async Task UpdateTaskEntityPropertiesInTable(string tableName, TableEntity entity, ETag etag, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _updateAttemptCount) == 1 && _firstUpdateWaiting != null && _continueFirstUpdate != null)
+            {
+                _firstUpdateWaiting.SetResult(true);
+                await _continueFirstUpdate.Task;
+            }
+
+            await Task.Yield();
+            lock (_syncRoot)
+            {
+                if (etag != _entity.ETag)
+                {
+                    ConflictCount++;
+                    throw new RequestFailedException(412, "ETag mismatch", "UpdateConditionNotSatisfied", null);
+                }
+
+                if (entity.TryGetValue(nameof(AzureTableTaskEntity.TaskState), out var taskState))
+                    _entity.TaskState = (string)taskState;
+                if (entity.TryGetValue(nameof(AzureTableTaskEntity.TaskData), out var taskData))
+                    _entity.TaskData = (string)taskData;
+                _etagVersion++;
+                _entity.ETag = BuildEtag();
+                UpdateCount++;
+            }
+        }
+
+        protected override Task AddEntityToTable<T>(string tableName, T entity, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        private ETag BuildEtag()
+            => new ETag($"\"{_etagVersion}\"");
     }
 }

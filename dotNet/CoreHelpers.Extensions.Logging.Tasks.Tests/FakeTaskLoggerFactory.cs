@@ -1,4 +1,5 @@
 using CoreHelpers.TaskLogging;
+using System.Text.Json.Nodes;
 using LoggingTaskStatus = CoreHelpers.TaskLogging.TaskStatus;
 
 namespace CoreHelpers.Extensions.Logging.Tasks.Tests;
@@ -23,6 +24,12 @@ internal sealed class FakeTaskLoggerFactory : ITaskLoggerFactory
 
     public Exception? StatusUpdateException { get; set; }
 
+    public List<(string TaskId, JsonObject Metadata)> MetadataMerges { get; } = new();
+
+    public JsonObject? AnnouncedMetadata { get; private set; }
+
+    public List<string> LifecycleEvents { get; } = new();
+
     public Func<int, string[], Exception?>? GetMergeException { get; set; }
 
     public int? PersistedMessageCountPerMerge { get; set; }
@@ -44,27 +51,32 @@ internal sealed class FakeTaskLoggerFactory : ITaskLoggerFactory
     }
 
     public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker)
-        => AnnounceException == null ? Task.FromResult("announced-task") : Task.FromException<string>(AnnounceException);
+        => AnnounceTask(taskType, taskSource, taskWorker, new JsonObject());
 
     public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, CancellationToken cancellationToken)
-        => Task.FromResult("announced-task");
+        => AnnounceTask(taskType, taskSource, taskWorker, new JsonObject(), cancellationToken);
 
-    public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData)
-        => Task.FromResult("announced-task");
+    public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, JsonObject metadata)
+    {
+        AnnouncedMetadata = (JsonObject)metadata.DeepClone();
+        return AnnounceException == null ? Task.FromResult("announced-task") : Task.FromException<string>(AnnounceException);
+    }
 
-    public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, string metaData, CancellationToken cancellationToken)
-        => Task.FromResult("announced-task");
+    public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, JsonObject metadata, CancellationToken cancellationToken)
+        => AnnounceTask(taskType, taskSource, taskWorker, metadata);
 
-    public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped)
-        => Task.FromResult("announced-task");
-
-    public Task<string> AnnounceTask(string taskType, string taskSource, string taskWorker, IDictionary<string, string> metaDataTyped, CancellationToken cancellationToken)
-        => Task.FromResult("announced-task");
+    public Task MergeTaskMetadata(string taskId, JsonObject metadata)
+    {
+        MetadataMerges.Add((taskId, (JsonObject)metadata.DeepClone()));
+        LifecycleEvents.Add($"metadata:{taskId}");
+        return Task.CompletedTask;
+    }
 
     public Task UpdateTaskStatus(string taskId, LoggingTaskStatus taskStatus)
     {
         StatusUpdates.Add(taskStatus);
         TaskStatusUpdates.Add((taskId, taskStatus));
+        LifecycleEvents.Add($"status:{taskId}:{taskStatus}");
         return StatusUpdateException == null ? Task.CompletedTask : Task.FromException(StatusUpdateException);
     }
 
@@ -72,6 +84,7 @@ internal sealed class FakeTaskLoggerFactory : ITaskLoggerFactory
     {
         StatusUpdates.Add(taskStatus);
         TaskStatusUpdates.Add((taskId, taskStatus));
+        LifecycleEvents.Add($"status:{taskId}:{taskStatus}");
         return Task.CompletedTask;
     }
 

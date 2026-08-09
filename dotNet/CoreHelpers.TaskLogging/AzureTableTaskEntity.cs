@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using Azure;
 using Azure.Data.Tables;
 
@@ -24,4 +23,3 @@ namespace CoreHelpers.TaskLogging
         public string TaskData { get; set; } = default!;
     }
 }
-

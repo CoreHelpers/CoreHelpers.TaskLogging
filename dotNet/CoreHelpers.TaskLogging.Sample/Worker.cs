@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using CoreHelpers.Extensions.Logging.Tasks;
 using Microsoft.Extensions.Hosting;
+using System.Text.Json.Nodes;
 
 namespace CoreHelpers.TaskLogging.Sample
 {
@@ -29,17 +30,21 @@ namespace CoreHelpers.TaskLogging.Sample
 			}
 
             // execute the failedprocessor
-            using (var scope = _logger.BeginNewTaskScope("failedjob", "q", "w", "app=CoreHelpers.TaskLogging.Sample,class=Main"))
+			using (var scope = _logger.BeginNewTaskScope("failedjob", "q", "w", new JsonObject
+			{
+				["app"] = "CoreHelpers.TaskLogging.Sample",
+				["class"] = "Main"
+			}))
 	            {
 		            Console.WriteLine(scope.TaskId);
 	                await _processors.Where(p => p is ProcessorFailed).First().Execute(stoppingToken);
 	            }
 
             // execute the succssprocesssor with announcement            
-            var metaData = new Dictionary<string, string>()
+            var metaData = new JsonObject
             {
-                { "app", "CoreHelpers.TaskLogging.Sample"},
-                { "class", "Main"}
+                ["app"] = "CoreHelpers.TaskLogging.Sample",
+                ["class"] = "Main"
             };
 
             var taskId = await _taskLoggerFactory.AnnounceTask("announcejob", "q", "w", metaData, stoppingToken);

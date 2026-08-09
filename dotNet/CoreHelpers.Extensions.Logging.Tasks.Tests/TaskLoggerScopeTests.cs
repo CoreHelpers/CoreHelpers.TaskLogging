@@ -1,6 +1,7 @@
 using CoreHelpers.TaskLogging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Text.Json.Nodes;
 using Xunit;
 
 namespace CoreHelpers.Extensions.Logging.Tasks.Tests;
@@ -189,6 +190,40 @@ public sealed class TaskLoggerScopeTests
         scope.Dispose();
 
         Assert.Equal(CoreHelpers.TaskLogging.TaskStatus.Succeed, factory.TaskStatusUpdates.Last().Status);
+    }
+
+    [Fact]
+    public void NewTaskScope_AnnouncesTypedMetadata()
+    {
+        var factory = CreatePersistingFactory();
+        using var services = CreateServices(factory);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("TypedMetadata");
+
+        using (logger.BeginNewTaskScope("type", "source", "worker", new JsonObject { ["tenant"] = "north" }, TimeSpan.FromHours(1)))
+        {
+        }
+
+        Assert.Equal("north", factory.AnnouncedMetadata!["tenant"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void ScopeMetadata_IsBufferedUntilDisposeAndFlushedBeforeStatus()
+    {
+        var factory = CreatePersistingFactory();
+        using var services = CreateServices(factory);
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("BufferedMetadata");
+        var scope = Assert.IsAssignableFrom<ITaskLoggerScope>(logger.BeginTaskScope("task", TimeSpan.FromHours(1)));
+
+        scope.MergeTaskMetadata(new JsonObject { ["progress"] = 50 });
+
+        Assert.Empty(factory.MetadataMerges);
+
+        scope.Dispose();
+
+        var merge = Assert.Single(factory.MetadataMerges);
+        Assert.Equal("task", merge.TaskId);
+        Assert.Equal(50, merge.Metadata["progress"]!.GetValue<int>());
+        Assert.True(factory.LifecycleEvents.IndexOf("metadata:task") < factory.LifecycleEvents.IndexOf("status:task:Succeed"));
     }
 
     [Theory]

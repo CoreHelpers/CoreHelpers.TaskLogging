@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using CoreHelpers.TaskLogging;
 using Microsoft.Extensions.Logging;
+using System.Text.Json.Nodes;
 
 namespace CoreHelpers.Extensions.Logging.Tasks
 {
@@ -44,6 +45,18 @@ namespace CoreHelpers.Extensions.Logging.Tasks
         public string TaskType => _taskLoggerState.TaskType;
         public string TaskSource => _taskLoggerState.TaskSource;
         public string TaskWorker => _taskLoggerState.TaskWorker;
+
+        public void MergeTaskMetadata(JsonObject metadata)
+        {
+            if (metadata == null)
+                throw new ArgumentNullException(nameof(metadata));
+
+            lock (_taskLoggerState.PendingMessagesSyncRoot)
+            {
+                foreach (var property in metadata)
+                    _taskLoggerState.PendingMetadata[property.Key] = property.Value?.DeepClone();
+            }
+        }
 
         public void SetStatus(TaskStatus status)
         {

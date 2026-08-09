@@ -2,6 +2,7 @@
 using CoreHelpers.TaskLogging;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json.Nodes;
 
 namespace CoreHelpers.Extensions.Logging.Tasks
 {
@@ -30,10 +31,10 @@ namespace CoreHelpers.Extensions.Logging.Tasks
             => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = taskId, IsTaskAnnounced = true, TaskWorker = taskWorker, CacheTimeSpan = cacheTimeSpan ?? TimeSpan.FromSeconds(30) });
         
         public static ITaskLoggerScope? BeginNewTaskScope(this ILogger logger, string taskType, string taskSource, string taskWorker, TimeSpan? cacheTimeSpan = null)
-            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = string.Empty, TaskType = taskType, TaskSource = taskSource, TaskWorker = taskWorker, IsTaskAnnounced = false, CacheTimeSpan = cacheTimeSpan ?? TimeSpan.FromSeconds(30) });
+            => BeginNewTaskScope(logger, taskType, taskSource, taskWorker, new JsonObject(), cacheTimeSpan);
         
-        public static ITaskLoggerScope? BeginNewTaskScope(this ILogger logger, string taskType, string taskSource, string taskWorker, string metaDataString, TimeSpan? cacheTimeSpan = null)
-            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = string.Empty, TaskType = taskType, TaskSource = taskSource, TaskWorker = taskWorker, IsTaskAnnounced = false, MetaData = metaDataString, CacheTimeSpan = cacheTimeSpan ?? TimeSpan.FromSeconds(30) });
+        public static ITaskLoggerScope? BeginNewTaskScope(this ILogger logger, string taskType, string taskSource, string taskWorker, JsonObject metadata, TimeSpan? cacheTimeSpan = null)
+            => BeginTypedTaskScope(logger, new TaskLoggerState() { TaskId = string.Empty, TaskType = taskType, TaskSource = taskSource, TaskWorker = taskWorker, IsTaskAnnounced = false, Metadata = (JsonObject)metadata.DeepClone(), CacheTimeSpan = cacheTimeSpan ?? TimeSpan.FromSeconds(30) });
         
         private static ITaskLoggerScope? BeginTypedTaskScope(ILogger logger, TaskLoggerState taskLoggerState)
         {
